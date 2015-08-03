@@ -284,8 +284,9 @@ You can temporarily change this on per-buffer basis using
   '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME - ")
                 (levels  . "SLF4J")
                 (aliases . ("Log4j" "Log4j2" "Logback")))))
-  "Alist of standard submodes.  This value is used as the
-fallback for customizable `logview-additional-submodes'.")
+  "Alist of standard submodes.
+This value is used as the fallback for customizable
+`logview-additional-submodes'.")
 
 (defvar logview-std-level-mappings
   '(("SLF4J" . ((error       "ERROR")
@@ -299,9 +300,9 @@ fallback for customizable `logview-additional-submodes'.")
                 (information "INFO")
                 (debug       "CONFIG" "FINE")
                 (trace       "FINER" "FINEST"))))
-  "Alist of standard mappings of actual log levels to mode's
-final levels.  This value is used as the fallback for
-customizable `logview-additional-level-mappings'.")
+  "Standard mappings of actual log levels to mode's final levels.
+This alist value is used as the fallback for customizable
+`logview-additional-level-mappings'.")
 
 (defvar logview-std-timestamp-formats
   '(("ISO 8601 datetime + millis"  . (; Silently handle both common decimal separators (dot and comma).
@@ -314,8 +315,9 @@ customizable `logview-additional-level-mappings'.")
                                       (aliases . ("HH:mm:ss.SSS"))))
     ("ISO 8601 time only"          . ((regexp  . "[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}")
                                       (aliases . ("HH:mm:ss")))))
-  "Alist of standard timestamp formats.  This is the fallback for
-customizable `logview-additional-timestamp-formats'.")
+  "Alist of standard timestamp formats.
+This value is used as the fallback for customizable
+`logview-additional-timestamp-formats'.")
 
 
 
@@ -342,8 +344,8 @@ customizable `logview-additional-timestamp-formats'.")
 (make-variable-buffer-local 'logview--submode-features)
 
 (defvar logview--submode-level-alist nil
-  "Submode levels, least to most important, mapped to final
-levels.")
+  "Submode levels mapped to final levels.
+Levels are ordered least to most important.")
 (make-variable-buffer-local 'logview--submode-level-alist)
 
 (defvar logview--submode-level-data nil
@@ -411,15 +413,17 @@ levels.")
 ;; beginnings, which is ugly and shifts actual buffer text.
 
 (defsubst logview--linefeed-back-checked (position)
-  "Assuming POSITION is at the beginning of a line, return
-position just before the preceding linefeed, if possible."
+  "Return end of previous line.
+This function assumes POSITION is at the beginning of a line.  If
+this is the first line, don't change POSITION."
   (if (> position 1)
       (1- position)
     1))
 
 (defsubst logview--linefeed-back (position)
-  "Assuming POSITION is at the beginning of a non-first line,
-return position just before the preceding linefeed."
+  "Return end of previous line assumin non-first line.
+This function assumes POSITION is at the beginning of a line and
+that the line is not the first in the buffer."
   (1- position))
 
 
@@ -722,14 +726,15 @@ prefix means zero."
   (logview--set-min-level (logview--find-min-level 'information)))
 
 (defun logview-show-errors-warnings-information-and-debug ()
-  "Show error, warning, information and debug entries.  I.e. all
-entries other than traces."
+  "Show error, warning, information and debug entries.
+I.e. all entries other than traces."
   (interactive)
   (logview--set-min-level (logview--find-min-level 'debug)))
 
 (defun logview-show-all-levels ()
-  "Show entries of all levels.  This doesn't cancel other filters
-that might be in effect though."
+  "Show entries of all levels.
+This doesn't cancel other filters that might be in effect
+though."
   (interactive)
   (logview--set-min-level (logview--find-min-level 'trace)))
 
@@ -765,32 +770,31 @@ hidden."
 ;;; Filtering by name/thread commands.
 
 (defun logview-add-include-name-filter ()
-  "Show only log entries with name matching entered regular
-expression.  If this command is invoked multiple times, show
-entries with name matching at least one of entered expression."
+  "Show only entries with name matching regular expression.
+If this command is invoked multiple times, show entries with name
+matching at least one of entered expression."
   (interactive)
   (logview--prompt-for-new-filter "Logger name regexp to show entries" 'name 'logview--include-name-regexps))
 
 (defun logview-add-exclude-name-filter ()
-  "Show only log entries with name that doesn't match entered
-regular expression.  If this command is invoked multiple times,
-show entries with name that doesn't match any of entered
-expression."
+  "Hide entries with name matching entered regular expression.
+If this command is invoked multiple times, filter out them all,
+i.e. show only entries with name that doesn't match any of
+entered expression."
   (interactive)
   (logview--prompt-for-new-filter "Logger name regexp to hide entries" 'name 'logview--exclude-name-regexps))
 
 (defun logview-add-include-thread-filter ()
-  "Show only log entries with thread name matching entered
-regular expression.  If this command is invoked multiple times,
-show entries with thread name matching at least one of entered
-expression."
+  "Show only entries with thread matching regular expression.
+If this command is invoked multiple times, show entries with
+thread name matching at least one of entered expression."
   (interactive)
   (logview--prompt-for-new-filter "Thread regexp to show entries" 'thread 'logview--include-thread-regexps))
 
 (defun logview-add-exclude-thread-filter ()
-  "Show only log entries with thread name that doesn't match
-entered regular expression.  If this command is invoked multiple
-times, show entries with thread name that doesn't match any of
+  "Hide entries with thread matching entered regular expression.
+If this command is invoked multiple times, filter out them all,
+i.e. show only entries with thread name that doesn't match any of
 entered expression."
   (interactive)
   (logview--prompt-for-new-filter "Thread regexp to hide entries" 'thread 'logview--exclude-thread-regexps))
@@ -844,14 +848,16 @@ This is actually the same as `logview-show-all-levels'."
   (logview--apply-filters))
 
 (defun logview-reset-all-filters ()
-  "Reset all filters (level, name, thread).  After this command
-only explictly hidden entries remain invisible."
+  "Reset all filters (level, name, thread).
+After this command only explictly hidden entries and entries
+outside narrowing buffer restrictions remain invisible."
   (interactive)
   (logview--do-reset-all-filters nil))
 
 (defun logview-reset-all-filters-restrictions-and-hidings ()
-  "Reset all filters, show all explictly hidden entries and
-cancel any narrowing restrictions."
+  "Reset all visibility restrictions.
+In other words, reset all filters, show all explictly hidden
+entries and cancel any narrowing restrictions."
   (interactive)
   (widen)
   (logview--do-reset-all-filters t))
@@ -890,8 +896,8 @@ region instead (i.e. just like `logview-hide-region-entries')."
        n (logview--iterate-successive-entries n (logview--hide-entry-callback 'logview-hidden-entry) t) 0))))
 
 (defun logview-hide-region-entries (begin end)
-  "Explicitly hide all log entries that are fully or partially in
-the region.
+  "Explicitly hide all log entries in the region.
+Entries that are in the region only partially are hidden as well.
 
 Note that this includes entries that are currently hidden due to
 filtering too.  If you later cancel filtering, all entries in the
@@ -903,8 +909,11 @@ hiding."
     (logview--iterate-entries-in-region begin end (logview--hide-entry-callback 'logview-hidden-entry))) )
 
 (defun logview-show-entries (&optional n)
-  "Show explicitly hidden entries between the current entry and
-N'th after it (or before it if N is negative).
+  "Show explicitly hidden entries.
+By default, explicitly hidden entries between the current and the
+next visible are shown.  If invoked with prefix argument, entries
+between the current entry and N'th after it (or before it if N is
+negative) are shown.
 
 In Transient Mark mode, if the region is active and this command
 is invoked without prefix argument, show explicitly hidden
@@ -1132,9 +1141,9 @@ match data will be set for the last valid matched header."
 
 
 (defun logview--iterate-entries-forward (callback &optional only-visible validator)
-  "Invoke CALLBACK for successive valid log entries starting at
-point and forward, until it returns nil or end of buffer is
-reached.
+  "Invoke CALLBACK for successive valid log entries forward.
+Iteration starts at the current entry and continues forward until
+CALLBACK returns nil or end of buffer is reached.
 
 CALLBACK is called with three arguments: beginning of the entry,
 end of its first line and its end (the last two are equal unless
@@ -1162,9 +1171,10 @@ are skipped too."
                  (/= (setq entry-begin entry-end) limit)))))))
 
 (defun logview--iterate-entries-backward (callback &optional only-visible validator)
-  "Invoke CALLBACK for successive valid log entries before the
-current entry until it returns nil or beginning of buffer is
-reached.
+  "Invoke CALLBACK for successive valid log entries backward.
+Iteration starts at the previous entry (not the current!) and
+continues backward until CALLBACK returns nil or beginning of
+buffer is reached.
 
 See `logview--iterate-entries-forward' for details."
   (when (logview--match-current-entry)
@@ -1333,10 +1343,10 @@ See `logview--iterate-entries-forward' for details."
 ;;; Internal commands meant as hooks.
 
 (defun logview--split-region-into-entries (begin end &optional old-length)
-  "Parse log entries in given region.  Optional third argument is
-to make the function suitable for `after-change-functions' and is
-ignored there.  Special value 'report-progress for this argument
-is treated differently."
+  "Parse log entries in given region.
+Optional third argument is to make the function suitable for
+`after-change-functions' and is ignored there.  Special value
+'report-progress for this argument is treated differently."
   (when logview--process-buffer-changes
     (save-excursion
       (save-match-data
