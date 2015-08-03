@@ -283,7 +283,9 @@ You can temporarily change this on per-buffer basis using
 (defvar logview-std-submodes
   '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME - ")
                 (levels  . "SLF4J")
-                (aliases . ("Log4j" "Log4j2" "Logback")))))
+                (aliases . ("Log4j" "Log4j2" "Logback"))))
+    ;; We misuse thread as a field for hostname.
+    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME: "))))
   "Alist of standard submodes.
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
@@ -305,16 +307,35 @@ This alist value is used as the fallback for customizable
 `logview-additional-level-mappings'.")
 
 (defvar logview-std-timestamp-formats
-  '(("ISO 8601 datetime + millis"  . (; Silently handle both common decimal separators (dot and comma).
-                                      (regexp  . "[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} [0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}[.,][0-9]\\{3\\}")
-                                      (aliases . ("yyyy-MM-dd HH:mm:ss.SSS"))))
-    ("ISO 8601 datetime"           . ((regexp  . "[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\} [0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}")
-                                      (aliases . ("yyyy-MM-dd HH:mm:ss"))))
-    ("ISO 8601 time only + millis" . (; Silently handle both common decimal separators (dot and comma).
-                                      (regexp  . "[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}[.,][0-9]\\{3\\}")
-                                      (aliases . ("HH:mm:ss.SSS"))))
-    ("ISO 8601 time only"          . ((regexp  . "[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}")
-                                      (aliases . ("HH:mm:ss")))))
+  ;; General notices: we silently handle both common decimal
+  ;; separators (dot and comma).  In several cases there is optional
+  ;; space if the day/hour number is single-digit.
+  (let ((HH:mm:ss          "[012][0-9]:[0-5][0-9]:[0-5][0-9]")
+        (h:mm:ss           "[ 01]?[0-9]:[0-5][0-9]:[0-5][0-9]")
+        (.SSS              "[.,][0-9]\\{3\\}")
+        (a                 " [AP]M")
+        (yyyy-MM-dd        "[0-9]\\{4\\}-[01][0-9]-[0-3][0-9]")
+        (MMM               (regexp-opt '("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")))
+        (d                 "[ 1-3]?[0-9]")
+        )
+    (list (list "ISO 8601 datetime + millis"
+                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .SSS))
+                (list 'aliases "yyyy-MM-dd HH:mm:ss.SSS"))
+          (list "ISO 8601 datetime"
+                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss))
+                (list 'aliases "yyyy-MM-dd HH:mm:ss"))
+          (list "ISO 8601 time only + millis"
+                (cons 'regexp  (concat HH:mm:ss .SSS))
+                (list 'aliases "HH:mm:ss.SSS"))
+          (list "ISO 8601 time only"
+                (cons 'regexp  HH:mm:ss)
+                (list 'aliases "HH:mm:ss"))
+          (list "MMM d HH:mm:ss"
+                (cons 'regexp  (concat MMM " " d " " HH:mm:ss)))
+          (list "MMM d h:mm:ss a"
+                (cons 'regexp  (concat MMM " " d " " h:mm:ss a)))
+          (list "h:mm:ss a"
+                (cons 'regexp  (concat h:mm:ss a)))))
   "Alist of standard timestamp formats.
 This value is used as the fallback for customizable
 `logview-additional-timestamp-formats'.")
