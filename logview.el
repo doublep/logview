@@ -382,6 +382,48 @@ levels.")
 
 
 
+;;; Macros and inlined functions.
+
+;; Lisp is sensitive to declaration order, so these are collected at
+;; the beginnig of the file.
+
+(defmacro logview--std-matching (&rest body)
+  (declare (indent 0) (debug t))
+  `(save-excursion
+     (let ((case-fold-search nil))
+       ,@body)))
+
+(defmacro logview--std-matching-and-altering (&rest body)
+  (declare (indent 0) (debug t))
+  `(save-excursion
+     (let ((logview--process-buffer-changes nil)
+           (case-fold-search                nil)
+           (inhibit-read-only               t))
+       (with-silent-modifications
+         ,@body))))
+
+
+;; The following (inlined) functions are needed when applying
+;; 'invisible' property.  Generally we count entry from start of its
+;; line to the start of next entry's line.  This works nice e.g. for
+;; highlighting.  However, for hiding entries we need to take linefeed
+;; that _preceeds_ the entry, otherwise ellipses show at line
+;; beginnings, which is ugly and shifts actual buffer text.
+
+(defsubst logview--linefeed-back-checked (position)
+  "Assuming POSITION is at the beginning of a line, return
+position just before the preceding linefeed, if possible."
+  (if (> position 1)
+      (1- position)
+    1))
+
+(defsubst logview--linefeed-back (position)
+  "Assuming POSITION is at the beginning of a non-first line,
+return position just before the preceding linefeed."
+  (1- position))
+
+
+
 ;;; The mode.
 
 (defvar logview-mode-map
@@ -1042,22 +1084,6 @@ argument is positive, disable it otherwise."
              (if (> direction 0) "No next (visible) entry" "No previous (visible) entry")))))
 
 
-(defmacro logview--std-matching (&rest body)
-  (declare (indent 0) (debug t))
-  `(save-excursion
-     (let ((case-fold-search nil))
-       ,@body)))
-
-(defmacro logview--std-matching-and-altering (&rest body)
-  (declare (indent 0) (debug t))
-  `(save-excursion
-     (let ((logview--process-buffer-changes nil)
-           (case-fold-search                nil)
-           (inhibit-read-only               t))
-       (with-silent-modifications
-         ,@body))))
-
-
 (defun logview--match-current-entry ()
   "Match the header of the log entry where the point currently is.
 
@@ -1282,26 +1308,6 @@ See `logview--iterate-entries-forward' for details."
         (when (> end after-first-line)
           (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back end)
                              'invisible (cons hider (get-text-property after-first-line 'invisible))))))))
-
-
-;; The following (inlined) functions are needed when applying
-;; 'invisible' property.  Generally we count entry from start of its
-;; line to the start of next entry's line.  This works nice e.g. for
-;; highlighting.  However, for hiding entries we need to take linefeed
-;; that _preceeds_ the entry, otherwise ellipses show at line
-;; beginnings, which is ugly and shifts actual buffer text.
-
-(defsubst logview--linefeed-back-checked (position)
-  "Assuming POSITION is at the beginning of a line, return
-position just before the preceding linefeed, if possible."
-  (if (> position 1)
-      (1- position)
-    1))
-
-(defsubst logview--linefeed-back (position)
-  "Assuming POSITION is at the beginning of a non-first line,
-return position just before the preceding linefeed."
-  (1- position))
 
 
 (defun logview--iterate-split-alists (callback &rest alists)
