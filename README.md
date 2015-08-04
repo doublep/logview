@@ -103,4 +103,4 @@ changed in each individual buffer.
 #### Miscellaneous
 
 * Bury buffer: `q`
-* Universal prefix commands are bound within modifiers: `u`, `-`, `0`..`9`
+* Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
