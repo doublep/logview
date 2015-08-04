@@ -453,6 +453,7 @@ that the line is not the first in the buffer."
 
 (defvar logview-mode-map
   (let ((map (make-sparse-keymap)))
+    (suppress-keymap map)
     (dolist (binding '(;; Movement commands.
                        ("TAB" logview-go-to-message-beginning)
                        ("n"   logview-next-entry)
@@ -499,24 +500,27 @@ that the line is not the first in the buffer."
                        ;; Option changing commands.
                        ("o v" logview-toggle-copy-visible-text-only)
                        ("o e" logview-toggle-show-ellipses)
+                       ("o S" logview-customize-submode-options)
+                       ;; For compatibility with the inactive keymap.
+                       ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
                        ("?"   logview-mode-help)
                        ("q"   bury-buffer)
-                       ;; Simplified universal argument command rebindings.
-                       ("u"   universal-argument)
-                       ("-"   negative-argument)
-                       ("0"   digit-argument)
-                       ("1"   digit-argument)
-                       ("2"   digit-argument)
-                       ("3"   digit-argument)
-                       ("4"   digit-argument)
-                       ("5"   digit-argument)
-                       ("6"   digit-argument)
-                       ("7"   digit-argument)
-                       ("8"   digit-argument)
-                       ("9"   digit-argument)))
+                       ;; Simplified universal argument command
+                       ;; rebindings.  Digits and minus are set up by
+                       ;; 'suppress-keymap' already.
+                       ("u"   universal-argument)))
       (define-key map (kbd (car binding)) (cadr binding)))
     map))
+
+(defvar logview-mode-inactive-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-s") 'logview-customize-submode-options)
+    map)
+  "Keymap used by `logview-mode' when the mode is inactive.
+Mode is inactive when the buffer is not read-only (to not
+interfere with editing) or if submode wasn't guessed
+successfully.")
 
 
 ;;;###autoload
@@ -526,9 +530,17 @@ that the line is not the first in the buffer."
   (logview--guess-submode)
   (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
   (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
-  (read-only-mode 1)
+  (when logview--entry-regexp
+    (read-only-mode 1))
+  (add-hook 'read-only-mode-hook 'logview--update-keymap nil t)
+  (logview--update-keymap)
   (set (make-local-variable 'filter-buffer-substring-function) 'logview--buffer-substring-filter)
   (add-hook 'change-major-mode-hook 'logview--exiting-mode nil t))
+
+(defun logview--update-keymap ()
+  (use-local-map (if (and buffer-read-only logview--entry-regexp)
+                     logview-mode-map
+                   logview-mode-inactive-map)))
 
 (defun logview--exiting-mode ()
   ;; Remove custom invisibility property values, as otherwise other
@@ -550,7 +562,7 @@ that the line is not the first in the buffer."
                                                (logview--initialize-submode name definition first-line)
                                              (error (warn (error-message-string error)))))
                                          logview-additional-submodes logview-std-submodes)
-          (message "Logview mode was unable to determine log format; please consult documentation"))))))
+          (message "Cannot determine log format; press C-c C-s to customize relevant options"))))))
 
 
 
@@ -997,6 +1009,20 @@ argument is positive, disable it otherwise."
                                   "Hidden log entries are completely invisible")
   (logview--update-invisibility-spec))
 
+(defun logview-customize-submode-options ()
+  "Customize all options that affect submode selection.
+These are:
+* `logview-additional-submodes'
+* `logview-additional-level-mappings'
+* `logview-additional-timestamp-formats'"
+  (interactive)
+  ;; Existing entry point only customizes single option, we need three
+  ;; at once (but this hardly warrants a separate group).
+  (custom-buffer-create-other-window '((logview-additional-submodes          custom-variable)
+                                       (logview-additional-level-mappings    custom-variable)
+                                       (logview-additional-timestamp-formats custom-variable))
+                                     "*Customize Logview Submodes*"))
+
 (defun logview--toggle-option-locally (variable arg &optional show-message message-if-true message-if-false)
   (set (make-local-variable variable)
        (if (eq arg 'toggle)
@@ -1090,6 +1116,7 @@ argument is positive, disable it otherwise."
                                           (intern (format "logview-%s-entry" (symbol-name final-level)))
                                           (intern (format "logview-level-%s" (symbol-name final-level)))))
                         logview--submode-level-data))))
+            (logview--update-keymap)
             (throw 'success nil))
         (when (not (memq 'timestamp features))
           ;; Else we will maybe retry with different timestamp formats.
@@ -1098,7 +1125,7 @@ argument is positive, disable it otherwise."
 
 (defun logview--assert (&rest assertions)
   (unless logview--entry-regexp
-    (error "Logview mode was unable to determine log format; please consult documentation"))
+    (error "Couldn't determine log format; press C-c C-s to customize relevant options"))
   (dolist (assertion assertions)
     (unless (memq assertion logview--submode-features)
       (error (cdr (assq assertion '((level  . "Log lacks entry levels")

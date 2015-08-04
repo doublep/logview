@@ -24,16 +24,21 @@ submodes it has.
 
 If it succeeds in guessing, you will see major mode specifed as
 ‘Logview/...’ in the modeline, where the second part is the submode
-name.  In case it fails, you will see it complain in the echo area and
-the buffer will not be highlighted.
+name.
+
+In case it fails, you will see it complain in the echo area.  The
+buffer will also not be highlighted or switched to read-only mode, so
+you will be able to edit it.
 
 #### What to do if Logview mode fails to guess format
 
-Currently your only option is to customize the mode.  You will want to
-add some entries to either ‘Additional Level Mappings’, ‘Additional
-Submodes’, ‘Additional Timestamp Formats’, or maybe to all three.
+Currently your only option is to customize the mode.  `C-c C-s` will
+show you only those options that are relevant to submode guessing.
+You will need to customize at least one of those, or maybe all three.
+All the variables are well-documented in customization interface.
 
-All these variables are well-documented in customization interface.
+If you think your log format is standard enough, you can open an issue
+and request format addition to the list of mode built-ins.
 
 
 ### Commands
@@ -41,6 +46,11 @@ All these variables are well-documented in customization interface.
 Nearly all commands have some use for prefix argument.  It can be
 usually just guessed, but you can always check individual command
 documentation within Emacs.
+
+When buffer is switched to read-write mode, Logview automatically
+deactivates all its commands so as to not interfere with editing.
+Once you switch the buffer back to read-only mode, commands will be
+active again.
 
 #### Movement
 
