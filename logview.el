@@ -37,8 +37,11 @@
 
 (eval-when-compile (require 'cl-lib))
 
+;; We _append_ self to the list of mode rules so as to not clobber
+;; other rules, as '.log' is a common file extension.  This also gives
+;; the user an easy way to prevent 'logview' from being autoselected.
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.log\\(?:\\.[0-9]+\\)?\\'" . logview-mode))
+(add-to-list 'auto-mode-alist '("\\.log\\(?:\\.[0-9]+\\)?\\'" . logview-mode) t)
 
 
 
