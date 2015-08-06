@@ -49,6 +49,13 @@
   :group 'text)
 
 
+(defun logview--set-submode-affecting-variable (variable value)
+  (set variable value)
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (and (eq major-mode 'logview-mode) (not (logview-initialized-p)))
+        (logview--guess-submode)))))
+
 (defcustom logview-additional-submodes nil
   "Association list of log submodes (file parsing rules).
 
@@ -96,7 +103,9 @@ aliases  [optional]
                               (set :inline t
                                    (cons :tag "" (const :tag "Level map:" levels)    string)
                                    (cons :tag "" (const :tag "Timestamp:" timestamp) (repeat string))
-                                   (cons :tag "" (const :tag "Aliases:"   aliases)   (repeat string)))))))
+                                   (cons :tag "" (const :tag "Aliases:"   aliases)   (repeat string))))))
+  :set   'logview--set-submode-affecting-variable
+  :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
 
 (defcustom logview-additional-level-mappings nil
   "Association list of log level mappings.
@@ -149,7 +158,8 @@ as the name."
                               (cons :tag "" (const :tag "Debug levels:"       debug)       (repeat string))
                               (cons :tag "" (const :tag "Trace levels:"       trace)       (repeat string))
                               (set :inline t
-                                   (cons :tag "" (const :tag "Aliases:" aliases) (repeat string)))))))
+                                   (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
+  :set   'logview--set-submode-affecting-variable)
 
 (defcustom logview-additional-timestamp-formats nil
   "Association list of additional timestamp formats.
@@ -173,7 +183,8 @@ work just as the name."
                         (list :tag "Definition"
                               (cons :tag "" (const :tag "Format:"  regexp)  regexp)
                               (set :inline t
-                                   (cons :tag "" (const :tag "Aliases:" aliases) (repeat string)))))))
+                                   (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
+  :set   'logview--set-submode-affecting-variable)
 
 
 (defcustom logview-copy-visible-text-only t
@@ -527,18 +538,16 @@ successfully.")
 (define-derived-mode logview-mode nil "Logview"
   "Major mode for viewing and filtering various log files."
   (logview--update-invisibility-spec)
-  (logview--guess-submode)
-  (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
-  (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
-  (when logview--entry-regexp
-    (read-only-mode 1))
-  (add-hook 'read-only-mode-hook 'logview--update-keymap nil t)
   (logview--update-keymap)
+  (add-hook 'read-only-mode-hook 'logview--update-keymap nil t)
   (set (make-local-variable 'filter-buffer-substring-function) 'logview--buffer-substring-filter)
-  (add-hook 'change-major-mode-hook 'logview--exiting-mode nil t))
+  (add-hook 'change-major-mode-hook 'logview--exiting-mode nil t)
+  (logview--guess-submode)
+  (unless (logview-initialized-p)
+    (message "Cannot determine log format; press C-c C-s to customize relevant options")))
 
 (defun logview--update-keymap ()
-  (use-local-map (if (and buffer-read-only logview--entry-regexp)
+  (use-local-map (if (and buffer-read-only (logview-initialized-p))
                      logview-mode-map
                    logview-mode-inactive-map)))
 
@@ -549,20 +558,8 @@ successfully.")
   (logview--std-matching-and-altering
     (remove-text-properties 1 (1+ (buffer-size)) '(face nil invisible nil))))
 
-(defun logview--guess-submode ()
-  (save-excursion
-    (save-restriction
-      (widen)
-      (goto-char 1)
-      (end-of-line)
-      (let ((first-line (buffer-substring 1 (point))))
-        (catch 'success
-          (logview--iterate-split-alists (lambda (name definition)
-                                           (condition-case error
-                                               (logview--initialize-submode name definition first-line)
-                                             (error (warn (error-message-string error)))))
-                                         logview-additional-submodes logview-std-submodes)
-          (message "Cannot determine log format; press C-c C-s to customize relevant options"))))))
+(defun logview-initialized-p ()
+  (not (null logview--entry-regexp)))
 
 
 
@@ -1043,6 +1040,20 @@ These are:
 
 ;;; Internal functions (except helpers for specific command groups).
 
+(defun logview--guess-submode ()
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char 1)
+      (end-of-line)
+      (let ((first-line (buffer-substring 1 (point))))
+        (catch 'success
+          (logview--iterate-split-alists (lambda (name definition)
+                                           (condition-case error
+                                               (logview--initialize-submode name definition first-line)
+                                             (error (warn (error-message-string error)))))
+                                         logview-additional-submodes logview-std-submodes))))))
+
 (defun logview--initialize-submode (name definition test-line)
   (let* ((format    (cdr (assq 'format    definition)))
          (timestamp (cdr (assq 'timestamp definition))))
@@ -1116,7 +1127,9 @@ These are:
                                           (intern (format "logview-%s-entry" (symbol-name final-level)))
                                           (intern (format "logview-level-%s" (symbol-name final-level)))))
                         logview--submode-level-data))))
-            (logview--update-keymap)
+            (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
+            (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
+            (read-only-mode 1)
             (throw 'success nil))
         (when (not (memq 'timestamp features))
           ;; Else we will maybe retry with different timestamp formats.
@@ -1124,7 +1137,7 @@ These are:
 
 
 (defun logview--assert (&rest assertions)
-  (unless logview--entry-regexp
+  (unless (logview-initialized-p)
     (error "Couldn't determine log format; press C-c C-s to customize relevant options"))
   (dolist (assertion assertions)
     (unless (memq assertion logview--submode-features)
