@@ -42,6 +42,72 @@
 
 
 
+;;; Public variables.
+;; This needs to go before customization, since the values are used in
+;; compound widget types.
+
+(defvar logview-std-submodes
+  '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME - ")
+                (levels  . "SLF4J")
+                (aliases . ("Log4j" "Log4j2" "Logback"))))
+    ;; We misuse thread as a field for hostname.
+    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME: "))))
+  "Alist of standard submodes.
+This value is used as the fallback for customizable
+`logview-additional-submodes'.")
+
+(defvar logview-std-level-mappings
+  '(("SLF4J" . ((error       "ERROR")
+                (warning     "WARN")
+                (information "INFO")
+                (debug       "DEBUG")
+                (trace       "TRACE")
+                (aliases     "Log4j" "Log4j2" "Logback")))
+    ("JUL"   . ((error       "ERROR")
+                (warning     "WARNING")
+                (information "INFO")
+                (debug       "CONFIG" "FINE")
+                (trace       "FINER" "FINEST"))))
+  "Standard mappings of actual log levels to mode's final levels.
+This alist value is used as the fallback for customizable
+`logview-additional-level-mappings'.")
+
+(defvar logview-std-timestamp-formats
+  ;; General notices: we silently handle both common decimal
+  ;; separators (dot and comma).  In several cases there is optional
+  ;; space if the day/hour number is single-digit.
+  (let ((HH:mm:ss          "[012][0-9]:[0-5][0-9]:[0-5][0-9]")
+        (h:mm:ss           "[ 01]?[0-9]:[0-5][0-9]:[0-5][0-9]")
+        (.SSS              "[.,][0-9]\\{3\\}")
+        (a                 " [AP]M")
+        (yyyy-MM-dd        "[0-9]\\{4\\}-[01][0-9]-[0-3][0-9]")
+        (MMM               (regexp-opt '("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")))
+        (d                 "[ 1-3]?[0-9]")
+        )
+    (list (list "ISO 8601 datetime + millis"
+                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .SSS))
+                (list 'aliases "yyyy-MM-dd HH:mm:ss.SSS"))
+          (list "ISO 8601 datetime"
+                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss))
+                (list 'aliases "yyyy-MM-dd HH:mm:ss"))
+          (list "ISO 8601 time only + millis"
+                (cons 'regexp  (concat HH:mm:ss .SSS))
+                (list 'aliases "HH:mm:ss.SSS"))
+          (list "ISO 8601 time only"
+                (cons 'regexp  HH:mm:ss)
+                (list 'aliases "HH:mm:ss"))
+          (list "MMM d HH:mm:ss"
+                (cons 'regexp  (concat MMM " " d " " HH:mm:ss)))
+          (list "MMM d h:mm:ss a"
+                (cons 'regexp  (concat MMM " " d " " h:mm:ss a)))
+          (list "h:mm:ss a"
+                (cons 'regexp  (concat h:mm:ss a)))))
+  "Alist of standard timestamp formats.
+This value is used as the fallback for customizable
+`logview-additional-timestamp-formats'.")
+
+
+
 ;;; Customization.
 
 (defgroup logview nil
@@ -55,6 +121,33 @@
     (with-current-buffer buffer
       (when (and (eq major-mode 'logview-mode) (not (logview-initialized-p)))
         (logview--guess-submode)))))
+
+(defvar logview--additional-submodes-type
+  (let* ((italicize      (lambda (string) (propertize string 'face 'italic)))
+         (mapping-option (lambda (mapping)
+                           (let ((name    (car mapping))
+                                 (aliases (cdr (assq 'aliases (cdr mapping)))))
+                             (list 'const
+                                   :tag (if aliases
+                                            (format "%s (aka: %s)" (funcall italicize name) (mapconcat italicize aliases ", "))
+                                          (funcall italicize name))
+                                   name)))))
+    (list 'repeat (list 'cons '(string :tag "Name")
+                        (list 'list :tag "Definition"
+                              '(cons :tag "" (const :tag "Format:" format) string)
+                              (list 'set :inline t
+                                    (list 'cons :tag "" '(const :tag "Level map:" levels)
+                                          (append '(choice)
+                                                  (mapcar mapping-option logview-std-level-mappings)
+                                                  '((string :tag "Other name"))))
+                                    (list 'cons :tag "" '(const :tag "Timestamp:" timestamp)
+                                          (list 'choice
+                                                '(const :tag "Any supported" nil)
+                                                (list 'repeat
+                                                      (append '(choice)
+                                                              (mapcar mapping-option logview-std-timestamp-formats)
+                                                              '((string :tag "Other name"))))))
+                                    '(cons :tag "" (const :tag "Aliases:"   aliases)   (repeat string))))))))
 
 (defcustom logview-additional-submodes nil
   "Association list of log submodes (file parsing rules).
@@ -97,13 +190,7 @@ aliases  [optional]
     Submode can have any number of optional aliases, which work just
     as the name."
   :group 'logview
-  :type  '(repeat (cons (string :tag "Name")
-                        (list :tag "Definition"
-                              (cons :tag "" (const :tag "Format:" format) string)
-                              (set :inline t
-                                   (cons :tag "" (const :tag "Level map:" levels)    string)
-                                   (cons :tag "" (const :tag "Timestamp:" timestamp) (repeat string))
-                                   (cons :tag "" (const :tag "Aliases:"   aliases)   (repeat string))))))
+  :type  logview--additional-submodes-type
   :set   'logview--set-submode-affecting-variable
   :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
 
@@ -286,70 +373,6 @@ You can temporarily change this on per-buffer basis using
   '((t :inherit font-lock-variable-name-face))
   "Face to use for logger thread."
   :group 'logview-faces)
-
-
-
-;;; Public variables.
-
-(defvar logview-std-submodes
-  '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME - ")
-                (levels  . "SLF4J")
-                (aliases . ("Log4j" "Log4j2" "Logback"))))
-    ;; We misuse thread as a field for hostname.
-    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME: "))))
-  "Alist of standard submodes.
-This value is used as the fallback for customizable
-`logview-additional-submodes'.")
-
-(defvar logview-std-level-mappings
-  '(("SLF4J" . ((error       "ERROR")
-                (warning     "WARN")
-                (information "INFO")
-                (debug       "DEBUG")
-                (trace       "TRACE")
-                (aliases     "Log4j" "Log4j2" "Logback")))
-    ("JUL"   . ((error       "ERROR")
-                (warning     "WARNING")
-                (information "INFO")
-                (debug       "CONFIG" "FINE")
-                (trace       "FINER" "FINEST"))))
-  "Standard mappings of actual log levels to mode's final levels.
-This alist value is used as the fallback for customizable
-`logview-additional-level-mappings'.")
-
-(defvar logview-std-timestamp-formats
-  ;; General notices: we silently handle both common decimal
-  ;; separators (dot and comma).  In several cases there is optional
-  ;; space if the day/hour number is single-digit.
-  (let ((HH:mm:ss          "[012][0-9]:[0-5][0-9]:[0-5][0-9]")
-        (h:mm:ss           "[ 01]?[0-9]:[0-5][0-9]:[0-5][0-9]")
-        (.SSS              "[.,][0-9]\\{3\\}")
-        (a                 " [AP]M")
-        (yyyy-MM-dd        "[0-9]\\{4\\}-[01][0-9]-[0-3][0-9]")
-        (MMM               (regexp-opt '("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")))
-        (d                 "[ 1-3]?[0-9]")
-        )
-    (list (list "ISO 8601 datetime + millis"
-                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .SSS))
-                (list 'aliases "yyyy-MM-dd HH:mm:ss.SSS"))
-          (list "ISO 8601 datetime"
-                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss))
-                (list 'aliases "yyyy-MM-dd HH:mm:ss"))
-          (list "ISO 8601 time only + millis"
-                (cons 'regexp  (concat HH:mm:ss .SSS))
-                (list 'aliases "HH:mm:ss.SSS"))
-          (list "ISO 8601 time only"
-                (cons 'regexp  HH:mm:ss)
-                (list 'aliases "HH:mm:ss"))
-          (list "MMM d HH:mm:ss"
-                (cons 'regexp  (concat MMM " " d " " HH:mm:ss)))
-          (list "MMM d h:mm:ss a"
-                (cons 'regexp  (concat MMM " " d " " h:mm:ss a)))
-          (list "h:mm:ss a"
-                (cons 'regexp  (concat h:mm:ss a)))))
-  "Alist of standard timestamp formats.
-This value is used as the fallback for customizable
-`logview-additional-timestamp-formats'.")
 
 
 
