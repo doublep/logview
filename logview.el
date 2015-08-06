@@ -50,11 +50,11 @@
 ;; compound widget types.
 
 (defvar logview-std-submodes
-  '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME - ")
+  '(("SLF4J" . ((format  . "TIMESTAMP [THREAD] LEVEL NAME -")
                 (levels  . "SLF4J")
                 (aliases . ("Log4j" "Log4j2" "Logback"))))
     ;; We misuse thread as a field for hostname.
-    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME: "))))
+    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME:"))))
   "Alist of standard submodes.
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
@@ -1137,6 +1137,9 @@ These are:
       (setq search-from end))
     (when (< search-from (length format))
       (funcall add-text-part search-from nil))
+    ;; Always behave as if format string ends with whitespace.
+    (unless (string-match "[ \t]$" format)
+      (push "[ \t]+" parts))
     (let ((regexp (apply 'concat (reverse parts))))
       (if (string-match regexp test-line)
           (progn
