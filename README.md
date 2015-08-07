@@ -104,7 +104,7 @@ active.
 
 #### Change options for current buffer
 
-This options can be customized globally and additionally temporarily
+These options can be customized globally and additionally temporarily
 changed in each individual buffer.
 
 * Toggle ‘copy only visible text’: `o v`
