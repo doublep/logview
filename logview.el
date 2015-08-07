@@ -335,7 +335,7 @@ You can temporarily change this on per-buffer basis using
   '((((background dark))
      :background "#004000")
     (t
-     :background "#f8fff8"))
+     :background "#e8ffe8"))
   "Face to use for information log entries."
   :group 'logview-faces)
 
@@ -358,7 +358,7 @@ You can temporarily change this on per-buffer basis using
   '((((background dark))
      :background "#404040")
     (t
-     :background "#f4f4f4"))
+     :background "#f0f0f0"))
   "Face to use for trace log entries."
   :group 'logview-faces)
 
