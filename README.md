@@ -79,16 +79,18 @@ active again.
 * Show entries of all levels: `l 5` or `l t`
 * Show entries ‘as important’ as current one: `+` or `l +`
 
-#### Filtering by entry’s logger name or thread
+#### Filtering by entry’s logger name, thread or message
 
 * Add name include / exclude filter: `a` / `A`
 * Add thread include / exclude filter: `t` / `T`
+* Add message include / exclude filter: `m` / `M`
 
 #### Resetting filters
 
 * Reset level filter: `r l`
 * Reset name filters: `r a`
 * Reset thread filters: `r t`
+* Reset message filters: `r m`
 * Reset all filters: `R`
 * Reset all filters, widen and show all explicitly hidden entries: `r e`
 
