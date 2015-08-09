@@ -81,6 +81,7 @@ active again.
 
 #### Filtering by entry’s logger name, thread or message
 
+* Edit current name, thread and message filters: `f` (pops up a separate buffer)
 * Add name include / exclude filter: `a` / `A`
 * Add thread include / exclude filter: `t` / `T`
 * Add message include / exclude filter: `m` / `M`

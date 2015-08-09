@@ -377,6 +377,16 @@ You can temporarily change this on per-buffer basis using
   "Face to use for logger thread."
   :group 'logview-faces)
 
+(defface logview-edit-filters-type-prefix
+  '((((background dark))
+     :background "#604000"
+     :weight     bold)
+    (t
+     :background "#ffe0c0"
+     :weight     bold))
+  "Face to use for type prefixes in filter editing buffer."
+  :group 'logview-faces)
+
 
 
 ;;; Internal variables and constants.
@@ -425,23 +435,23 @@ Levels are ordered least to most important.")
 (defvar logview--all-current-filters)
 (make-variable-buffer-local 'logview--all-current-filters)
 
-(defvar logview--include-name-regexps)
-(make-variable-buffer-local 'logview--include-name-regexps)
+(defvar logview--include-name-regexp)
+(make-variable-buffer-local 'logview--include-name-regexp)
 
-(defvar logview--exclude-name-regexps)
-(make-variable-buffer-local 'logview--exclude-name-regexps)
+(defvar logview--exclude-name-regexp)
+(make-variable-buffer-local 'logview--exclude-name-regexp)
 
-(defvar logview--include-thread-regexps)
-(make-variable-buffer-local 'logview--include-thread-regexps)
+(defvar logview--include-thread-regexp)
+(make-variable-buffer-local 'logview--include-thread-regexp)
 
-(defvar logview--exclude-thread-regexps)
-(make-variable-buffer-local 'logview--exclude-thread-regexps)
+(defvar logview--exclude-thread-regexp)
+(make-variable-buffer-local 'logview--exclude-thread-regexp)
 
-(defvar logview--include-message-regexps)
-(make-variable-buffer-local 'logview--include-message-regexps)
+(defvar logview--include-message-regexp)
+(make-variable-buffer-local 'logview--include-message-regexp)
 
-(defvar logview--exclude-message-regexps)
-(make-variable-buffer-local 'logview--exclude-message-regexps)
+(defvar logview--exclude-message-regexp)
+(make-variable-buffer-local 'logview--exclude-message-regexp)
 
 (defvar logview--name-regexp-history)
 (defvar logview--thread-regexp-history)
@@ -449,6 +459,17 @@ Levels are ordered least to most important.")
 
 (defvar logview--process-buffer-changes)
 (make-variable-buffer-local 'logview--process-buffer-changes)
+
+(defvar logview--filter-editing-buffer)
+(make-variable-buffer-local 'logview--filter-editing-buffer)
+
+
+(defvar logview-filter-edit--parent-buffer)
+(make-variable-buffer-local 'logview-filter-edit--parent-buffer)
+
+(defvar logview-filter-edit--hint-comment
+  "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
+")
 
 
 
@@ -529,6 +550,7 @@ that the line is not the first in the buffer."
                        ("+"   logview-show-only-as-important)
                        ("l +" logview-show-only-as-important)
                        ;; Filtering by name/thread/message commands.
+                       ("f"   logview-edit-filters)
                        ("a"   logview-add-include-name-filter)
                        ("A"   logview-add-exclude-name-filter)
                        ("t"   logview-add-include-thread-filter)
@@ -838,6 +860,18 @@ hidden."
 
 ;;; Filtering by name/thread commands.
 
+(defun logview-edit-filters ()
+  (interactive)
+  (let ((self    (current-buffer))
+        (filters logview--all-current-filters))
+    (unless (buffer-live-p logview--filter-editing-buffer)
+      (setq logview--filter-editing-buffer (generate-new-buffer (format "%s: Filters" (buffer-name)))))
+    (pop-to-buffer logview--filter-editing-buffer)
+    (unless (eq major-mode 'logview-filter-edit-mode)
+      (logview-filter-edit-mode))
+    (setq logview-filter-edit--parent-buffer self)
+    (logview-filter-edit--initialize-text filters)))
+
 (defun logview-add-include-name-filter ()
   "Show only entries with name matching regular expression.
 If this command is invoked multiple times, show entries with name
@@ -903,7 +937,7 @@ that doesn't match any of entered expression."
                                                (when (and logview--all-current-filters
                                                           (not (string-suffix-p "\n" logview--all-current-filters)))
                                                  "\n")
-                                               filter-line-prefix " " (replace-regexp-in-string "\n" "\n^^ " regexp) "\n"))
+                                               filter-line-prefix " " (replace-regexp-in-string "\n" "\n.. " regexp) "\n"))
     (logview--parse-filters)
     (logview--apply-parsed-filters)))
 
@@ -1365,6 +1399,7 @@ See `logview--iterate-entries-forward' for details."
   ;; As we "leave" current buffer, we need to rebind variables
   ;; locally, so their values are properly transferred.
   (let ((filters logview--all-current-filters)
+        non-discarded-lines
         include-name-regexps
         exclude-name-regexps
         include-thread-regexps
@@ -1377,56 +1412,68 @@ See `logview--iterate-entries-forward' for details."
         (goto-char 1)
         (while (not (eobp))
           (logview--with-next-filter-lines
-           (lambda (type start end)
-             (unless (member type '("#" "" nil))
-               (if (or (eq to-reset t) (member type to-reset))
-                   (delete-region start (point))
-                 (let ((regexp (replace-regexp-in-string "\n^^ " "\n" (buffer-substring-no-properties start end))))
-                   (pcase type
-                     ("a+" (push regexp include-name-regexps))
-                     ("a-" (push regexp exclude-name-regexps))
-                     ("t+" (push regexp include-thread-regexps))
-                     ("t-" (push regexp exclude-thread-regexps))
-                     ("m+" (push regexp include-message-regexps))
-                     ("m-" (push regexp exclude-message-regexps))))))))))
-      (setq logview--include-name-regexps    include-name-regexps
-            logview--exclude-name-regexps    exclude-name-regexps
-            logview--include-thread-regexps  include-thread-regexps
-            logview--exclude-thread-regexps  exclude-thread-regexps
-            logview--include-message-regexps include-message-regexps
-            logview--exclude-message-regexps exclude-message-regexps))))
+           (lambda (type line-begin begin end)
+             (let ((filter-line       (not (member type '("#" "" nil))))
+                   (reset-this-filter (or (eq to-reset t) (member type to-reset))))
+               (when reset-this-filter
+                 (delete-region begin (point)))
+               (when (not (and filter-line reset-this-filter))
+                 (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
+               (when (and filter-line (not reset-this-filter))
+                 (let ((regexp (logview--filter-regexp begin end)))
+                   (when (logview--valid-regexp-p regexp)
+                     (pcase type
+                       ("a+" (push regexp include-name-regexps))
+                       ("a-" (push regexp exclude-name-regexps))
+                       ("t+" (push regexp include-thread-regexps))
+                       ("t-" (push regexp exclude-thread-regexps))
+                       ("m+" (push regexp include-message-regexps))
+                       ("m-" (push regexp exclude-message-regexps)))))))))))
+      (setq logview--all-current-filters    (apply 'concat (nreverse non-discarded-lines))
+            logview--include-name-regexp    (logview--build-filter-regexp include-name-regexps)
+            logview--exclude-name-regexp    (logview--build-filter-regexp exclude-name-regexps)
+            logview--include-thread-regexp  (logview--build-filter-regexp include-thread-regexps)
+            logview--exclude-thread-regexp  (logview--build-filter-regexp exclude-thread-regexps)
+            logview--include-message-regexp (logview--build-filter-regexp include-message-regexps)
+            logview--exclude-message-regexp (logview--build-filter-regexp exclude-message-regexps)))))
 
 (defun logview--with-next-filter-lines (callback)
   "Find next filter specification in the current buffer.
 Buffer must be positioned at the start of a line.
 
-CALLBACK is called with three arguments: TYPE, START, and END.
-TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\" or \"m-\" for
-valid filter types, \"#\" for comment line and \"\" for an empty
-line, or nil to indicate an erroneous line.  START and END
+CALLBACK is called with four arguments: TYPE, LINE-BEGIN, BEGIN,
+and END.  TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\" or
+\"m-\" for valid filter types, \"#\" for comment line and \"\" for an
+empty line, or nil to indicate an erroneous line.  BEGIN and END
 determine filter text boundaries (may span several lines for
-message filters.  Point is positioned at the start of next line,
+message filters.  LINE-BEGIN is the beginnig of the line where
+the entry starts; in case of filters this is a few charaters
+before BEGIN.  Point is positioned at the start of next line,
 which is usually one line beyond END."
-  (let* ((start            (point))
+  (let* ((line-begin       (point))
+         (begin            line-begin)
          (case-fold-search nil)
          (type             (when (looking-at "\\([atm][-+]\\) \\|\\s-*\\(#\\)\\|\\s-*$")
-                             (if (match-string 1)
-                                 (progn (setq start (match-end 0))
+                             (if (match-beginning 1)
+                                 (progn (setq begin (match-end 0))
                                         (match-string 1))
-                               (match-string 2) ""))))
+                               (or (match-string 2) "")))))
     (forward-line)
     (when (member type '("m+" "m-"))
-      (while (looking-at "^^ ")
+      (while (looking-at "\\.\\. ")
         (forward-line)))
-    (funcall callback type start (if (bolp) (logview--linefeed-back (point)) (point)))))
+    (funcall callback type line-begin begin (if (bolp) (logview--linefeed-back-checked (point)) (point)))))
+
+(defun logview--filter-regexp (begin end)
+  (replace-regexp-in-string "\n\\.\\. " "\n" (buffer-substring-no-properties begin end)))
 
 (defun logview--apply-parsed-filters (&optional also-cancel-explicit-hiding)
-  (let* ((include-name-regexp    (logview--build-filter-regexp logview--include-name-regexps))
-         (exclude-name-regexp    (logview--build-filter-regexp logview--exclude-name-regexps))
-         (include-thread-regexp  (logview--build-filter-regexp logview--include-thread-regexps))
-         (exclude-thread-regexp  (logview--build-filter-regexp logview--exclude-thread-regexps))
-         (include-message-regexp (logview--build-filter-regexp logview--include-message-regexps))
-         (exclude-message-regexp (logview--build-filter-regexp logview--exclude-message-regexps))
+  (let* ((include-name-regexp    logview--include-name-regexp)
+         (exclude-name-regexp    logview--exclude-name-regexp)
+         (include-thread-regexp  logview--include-thread-regexp)
+         (exclude-thread-regexp  logview--exclude-thread-regexp)
+         (include-message-regexp logview--include-message-regexp)
+         (exclude-message-regexp logview--exclude-message-regexp)
          (no-message-filter      (not (or include-message-regexp exclude-message-regexp)))
          (filters                (list include-name-regexp    exclude-name-regexp
                                        include-thread-regexp  exclude-thread-regexp
@@ -1509,7 +1556,7 @@ which is usually one line beyond END."
                    (message "Filtering complete, %d %s out of %d (%.1f%%) %s hidden"
                             num-hidden (if (= num-hidden 1) "entry" "entries") (+ num-hidden num-visible)
                             (/ (* num-hidden 100.0) (+ num-hidden num-visible)) (if (= num-hidden 1) "was" "were"))))))))
-      (setq logview--applied-filters filters)))
+    (setq logview--applied-filters filters)))
 
 ;; FIXME: Resulting regexp will not be valid if any of the options
 ;;        uses group backreferences (\N) and maybe some other
@@ -1651,6 +1698,77 @@ Optional third argument is to make the function suitable for
             (setq begin end))
           (apply 'concat (nreverse chunks)))
       substring)))
+
+
+
+;;; Logview Filter Edit mode.
+
+(defvar logview-filter-edit-mode-map
+  (let ((map (make-sparse-keymap)))
+    (dolist (binding '(("C-c C-c" logview-filter-edit-save)
+                       ("C-c C-k" logview-filter-edit-cancel)))
+      (define-key map (kbd (car binding)) (cadr binding)))
+    map))
+
+(define-derived-mode logview-filter-edit-mode nil "Logview Filters"
+  "Major mode for editing filters of a Logview buffer."
+  (logview-filter-edit--font-lock-region (point-min) (point-max))
+  (add-hook 'after-change-functions 'logview-filter-edit--font-lock-region t t))
+
+(defun logview-filter-edit-save ()
+  (interactive)
+  (logview-filter-edit--quit t))
+
+(defun logview-filter-edit-cancel ()
+  (interactive)
+  (logview-filter-edit--quit nil))
+
+(defun logview-filter-edit--quit (save)
+  (let ((parent  logview-filter-edit--parent-buffer)
+        (filters (when save
+                   (buffer-substring-no-properties 1 (1+ (buffer-size))))))
+    (quit-window t)
+    (switch-to-buffer parent)
+    (when save
+      (setq logview--all-current-filters filters)
+      (logview--parse-filters)
+      (logview--apply-parsed-filters))))
+
+(defun logview-filter-edit--initialize-text (text)
+  (unless (string-prefix-p logview-filter-edit--hint-comment text)
+    (setq text (concat logview-filter-edit--hint-comment text)))
+  (delete-region 1 (1+ (buffer-size)))
+  (insert text)
+  (set-buffer-modified-p nil))
+
+(defun logview-filter-edit--font-lock-region (begin end &optional _old-length)
+  (save-excursion
+    (save-match-data
+      (save-restriction
+        (with-silent-modifications
+          (widen)
+          (goto-char begin)
+          (forward-line 0)
+          (while (progn (logview--with-next-filter-lines
+                         (lambda (type line-begin begin end)
+                           (cond ((null type)
+                                  (put-text-property begin end 'face 'error))
+                                 ((string= type "#")
+                                  (put-text-property begin end 'face 'font-lock-comment-face))
+                                 ((string= type "")
+                                  (put-text-property begin end 'face nil))
+                                 (t
+                                  (let* ((valid (logview--valid-regexp-p (logview--filter-regexp begin end))))
+                                    (goto-char begin)
+                                    (while (let ((from (point)))
+                                             (put-text-property (- from 3) from 'face 'logview-edit-filters-type-prefix)
+                                             (forward-line)
+                                             (put-text-property from (if (bolp) (logview--linefeed-back (point)) (point))
+                                                                'face (unless valid 'error))
+                                             (when (< (point) end)
+                                               (forward-char 3)
+                                               t))))))))
+                        (< (point) end))))))))
 
 
 (provide 'logview)
