@@ -282,17 +282,24 @@ work just as the name."
 Standard Emacs behavior is to copy even invisible text, but that
 typically doesn't make much sense with filtering.
 
-You can temporarily change this on per-buffer basis using
-`logview-toggle-copy-visible-text-only' command (normally bound
-to o v)."
+To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logview-toggle-copy-visible-text-only]."
+  :group 'logview
+  :type  'boolean)
+
+(defcustom logview-search-only-in-messages nil
+  "Whether to incrementally search only in messages.
+Normally search is not restricted and matches can be found
+anywhere.  However, it is sometimes useful to ignore other parts
+of log entries, e.g. timestamp when searching for numbers.
+
+To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logview-toggle-search-only-in-messages]."
   :group 'logview
   :type  'boolean)
 
 (defcustom logview-show-ellipses t
   "Whether to show ellipses to indicate hidden log entries.
 
-You can temporarily change this on per-buffer basis using
-`logview-toggle-show-ellipses' command (normally bound to o e)."
+To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logview-toggle-show-ellipses]."
   :group 'logview
   :type  'boolean)
 
@@ -548,6 +555,7 @@ that the line is not the first in the buffer."
                        ("S"   logview-show-region-entries)
                        ;; Option changing commands.
                        ("o v" logview-toggle-copy-visible-text-only)
+                       ("o m" logview-toggle-search-only-in-messages)
                        ("o e" logview-toggle-show-ellipses)
                        ("o S" logview-customize-submode-options)
                        ;; For compatibility with the inactive keymap.
@@ -579,6 +587,7 @@ successfully.")
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook 'logview--update-keymap nil t)
   (set (make-local-variable 'filter-buffer-substring-function) 'logview--buffer-substring-filter)
+  (set (make-local-variable 'isearch-filter-predicate)         'logview--isearch-filter-predicate)
   (add-hook 'change-major-mode-hook 'logview--exiting-mode nil t)
   (logview--guess-submode)
   (unless (logview-initialized-p)
@@ -1075,6 +1084,16 @@ argument is positive, disable it otherwise."
   (logview--toggle-option-locally 'logview-copy-visible-text-only arg (called-interactively-p 'interactive)
                                   "Will copy only visible text now"
                                   "Copying commands will behave as in the rest of Emacs"))
+
+(defun logview-toggle-search-only-in-messages (&optional arg)
+  "Toggle `logview-search-only-in-messages' just for this buffer.
+
+If invoked with prefix argument, enable the option if the
+argument is positive, disable it otherwise."
+  (interactive (list (or current-prefix-arg 'toggle)))
+  (logview--toggle-option-locally 'logview-search-only-in-messages arg (called-interactively-p 'interactive)
+                                  "Incremental search will find matches only in messages"
+                                  "Incremental search will behave normally"))
 
 (defun logview-toggle-show-ellipses (&optional arg)
   "Toggle `logview-show-ellipses' just for this buffer.
@@ -1685,6 +1704,20 @@ Optional third argument is to make the function suitable for
             (setq begin end))
           (apply 'concat (nreverse chunks)))
       substring)))
+
+(defun logview--isearch-filter-predicate (begin end)
+  (and (funcall (default-value 'isearch-filter-predicate) begin end)
+       (or (not logview-search-only-in-messages)
+             (logview--std-matching
+               (save-match-data
+                 (save-restriction
+                   (widen)
+                   (goto-char begin)
+                   (or (not (logview--match-current-entry))
+                       (and (or (>= (match-beginning 0) end)
+                                (and (<= (match-end 0) begin)
+                                     (or (not (logview--match-successive-entries 1 t))
+                                         (>= (match-beginning 0) end))))))))))))
 
 
 
