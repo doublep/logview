@@ -277,6 +277,25 @@ work just as the name."
   :set   'logview--set-submode-affecting-variable)
 
 
+(defcustom logview-auto-revert-mode nil
+  "Automatically put recognized buffers into Auto-Revert mode.
+Buffers for which no appropriate submode can be guessed are not
+affected and buffers not associated with files.  Having this set
+to \"Off\" doesn't prevent Global Auto-Revert mode from affecting
+Logview buffers.
+
+Whenever new text is added to the buffer, it is automatically
+parsed, highlighted and all currently active filters are applied
+to it.
+
+To temporarily activate or deactivate Auto-Revert (Tail) mode in
+a Logview buffer type \\<logview-mode-map>\\[auto-revert-mode] or \\<logview-mode-map>\\[auto-revert-tail-mode]."
+  :group 'logview
+  :type  '(choice (const :tag "Off"                   nil)
+                  (const :tag "Auto-Revert mode"      auto-revert-mode)
+                  (const :tag "Auto-Revert Tail mode" auto-revert-tail-mode)))
+
+
 (defcustom logview-copy-visible-text-only t
   "Whether to copy, kill, etc. only visible selected text.
 Standard Emacs behavior is to copy even invisible text, but that
@@ -556,6 +575,8 @@ that the line is not the first in the buffer."
                        ("s"   logview-show-entries)
                        ("S"   logview-show-region-entries)
                        ;; Option changing commands.
+                       ("o r" auto-revert-mode)
+                       ("o t" auto-revert-tail-mode)
                        ("o v" logview-toggle-copy-visible-text-only)
                        ("o m" logview-toggle-search-only-in-messages)
                        ("o e" logview-toggle-show-ellipses)
@@ -1235,6 +1256,10 @@ These are:
             (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
             (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
             (read-only-mode 1)
+            (when buffer-file-name
+              (pcase logview-auto-revert-mode
+                ('auto-revert-mode      (auto-revert-mode      1))
+                ('auto-revert-tail-mode (auto-revert-tail-mode 1))))
             (throw 'success nil))
         (when (not (memq 'timestamp features))
           ;; Else we will maybe retry with different timestamp formats.
