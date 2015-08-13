@@ -1788,6 +1788,10 @@ Optional third argument is to make the function suitable for
           (widen)
           (goto-char region-begin)
           (forward-line 0)
+          ;; Never try to parse from the middle of a multiline filter.
+          (while (and (not (bobp))
+                      (looking-at "\.\. "))
+            (forward-line -1))
           (logview--iterate-filter-lines
            (lambda (type _line-begin begin end)
              (cond ((null type)
