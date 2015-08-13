@@ -430,14 +430,16 @@ Levels are ordered least to most important.")
 (defvar-local logview--min-shown-level nil)
 (defvar-local logview--as-important-levels nil)
 
-(defvar-local logview--applied-filters '(nil nil nil nil nil nil))
-(defvar-local logview--all-current-filters    nil)
-(defvar-local logview--include-name-regexp    nil)
-(defvar-local logview--exclude-name-regexp    nil)
-(defvar-local logview--include-thread-regexp  nil)
-(defvar-local logview--exclude-thread-regexp  nil)
-(defvar-local logview--include-message-regexp nil)
-(defvar-local logview--exclude-message-regexp nil)
+(defvar-local logview--current-filter-text nil)
+
+;; Currently a list of three items: matching function, inclusion and
+;; exclusion regexps.
+(defvar-local logview--name-filter    nil)
+(defvar-local logview--thread-filter  nil)
+(defvar-local logview--message-filter nil)
+
+(defvar logview--empty-filter-id '((nil nil) (nil nil) (nil nil)))
+(defvar-local logview--applied-filter-id logview--empty-filter-id)
 
 (defvar logview--name-regexp-history)
 (defvar logview--thread-regexp-history)
@@ -850,7 +852,7 @@ hidden."
   (interactive)
   (let ((self    (current-buffer))
         (windows (current-window-configuration))
-        (filters logview--all-current-filters))
+        (filters logview--current-filter-text))
     (unless (buffer-live-p logview--filter-editing-buffer)
       (setq logview--filter-editing-buffer (generate-new-buffer (format "%s: Filters" (buffer-name)))))
     (split-window-vertically)
@@ -923,9 +925,9 @@ that doesn't match any of entered expression."
       (error "Invalid regular expression"))
     (when (and (memq type '(name thread)) (string-match "\n" regexp))
       (error "Regular expression must not span several lines"))
-    (setq logview--all-current-filters (concat logview--all-current-filters
-                                               (when (and logview--all-current-filters
-                                                          (not (string-suffix-p "\n" logview--all-current-filters)))
+    (setq logview--current-filter-text (concat logview--current-filter-text
+                                               (when (and logview--current-filter-text
+                                                          (not (string-suffix-p "\n" logview--current-filter-text)))
                                                  "\n")
                                                filter-line-prefix " " (replace-regexp-in-string "\n" "\n.. " regexp) "\n"))
     (logview--parse-filters)
@@ -1026,7 +1028,7 @@ hiding."
   (interactive "r")
   (logview--assert)
   (logview--std-matching-and-altering
-    (logview--iterate-entries-in-region begin end (logview--hide-entry-callback 'logview-hidden-entry))) )
+    (logview--iterate-entries-in-region begin end (logview--hide-entry-callback 'logview-hidden-entry))))
 
 (defun logview-show-entries (&optional n)
   "Show explicitly hidden entries.
@@ -1069,7 +1071,7 @@ entries in the region instead (i.e. work just like
   (interactive "r")
   (logview--assert)
   (logview--std-matching-and-altering
-    (logview--iterate-entries-in-region begin end (logview--show-entry-callback 'logview-hidden-entry))) )
+    (logview--iterate-entries-in-region begin end (logview--show-entry-callback 'logview-hidden-entry))))
 
 
 
@@ -1316,7 +1318,8 @@ data and must make sure point and match data are preserved.
 
 If ONLY-VISIBLE is non-nil, hidden entries are skipped.  If
 VALIDATOR is non-nil, entries for which the function returns nil
-are skipped too."
+are skipped too.  VALIDATOR is always called with match data set
+and point at the beginning of the next line."
   (when (logview--match-current-entry)
     (let ((entry-begin (match-beginning 0))
           (after-first-line)
@@ -1324,9 +1327,9 @@ are skipped too."
           (limit       (point-max))
           (invalid))
       (while (progn
+               (forward-line)
                (setq invalid (or (and only-visible (invisible-p entry-begin))
                                  (and validator    (not (funcall validator)))))
-               (forward-line)
                (setq after-first-line (point)
                      entry-end        (if (re-search-forward logview--entry-regexp nil t)
                                           (match-beginning 0)
@@ -1350,9 +1353,10 @@ See `logview--iterate-entries-forward' for details."
                   (progn
                     (setq entry-end   entry-begin
                           entry-begin (match-beginning 0))
+                    (forward-line)
                     (or (and only-visible (invisible-p entry-begin))
                         (and validator    (not (funcall validator)))
-                        (when (funcall callback entry-begin (progn (forward-line) (point)) entry-end)
+                        (when (funcall callback entry-begin (point) entry-end)
                           (goto-char entry-begin)))))))))
 
 (defun logview--iterate-successive-entries (n callback &optional only-visible validator)
@@ -1398,7 +1402,7 @@ See `logview--iterate-entries-forward' for details."
 (defun logview--parse-filters (&optional to-reset)
   ;; As we "leave" current buffer, we need to rebind variables
   ;; locally, so their values are properly transferred.
-  (let ((filters logview--all-current-filters)
+  (let ((filters logview--current-filter-text)
         non-discarded-lines
         include-name-regexps
         exclude-name-regexps
@@ -1429,13 +1433,10 @@ See `logview--iterate-entries-forward' for details."
                      ("m+" (push regexp include-message-regexps))
                      ("m-" (push regexp exclude-message-regexps))))))
              t))))
-      (setq logview--all-current-filters    (apply 'concat (nreverse non-discarded-lines))
-            logview--include-name-regexp    (logview--build-filter-regexp include-name-regexps)
-            logview--exclude-name-regexp    (logview--build-filter-regexp exclude-name-regexps)
-            logview--include-thread-regexp  (logview--build-filter-regexp include-thread-regexps)
-            logview--exclude-thread-regexp  (logview--build-filter-regexp exclude-thread-regexps)
-            logview--include-message-regexp (logview--build-filter-regexp include-message-regexps)
-            logview--exclude-message-regexp (logview--build-filter-regexp exclude-message-regexps)))))
+      (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
+            logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
+            logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
+            logview--message-filter      (logview--build-filter include-message-regexps exclude-message-regexps)))))
 
 (defun logview--iterate-filter-lines (callback)
   "Find successive filter specification in the current buffer.
@@ -1470,106 +1471,153 @@ which is usually one line beyond END."
                       (forward-line)))
                   (funcall callback type line-begin begin (if (bolp) (logview--linefeed-back-checked (point)) (point))))))))
 
+(defun logview--build-filter (include-regexp-list exclude-regexp-list)
+  (let ((include-regexp (logview--build-filter-regexp include-regexp-list))
+        (exclude-regexp (logview--build-filter-regexp exclude-regexp-list)))
+    (list (if include-regexp
+              (if exclude-regexp
+                  (lambda (string) (and (string-match include-regexp string) (not (string-match exclude-regexp string))))
+                (lambda (string) (string-match include-regexp string)))
+            (when exclude-regexp
+              (lambda (string) (not (string-match exclude-regexp string)))))
+          include-regexp
+          exclude-regexp)))
+
 (defun logview--filter-regexp (begin end)
   (replace-regexp-in-string "\n\\.\\. " "\n" (buffer-substring-no-properties begin end)))
 
-(defun logview--apply-parsed-filters (&optional also-cancel-explicit-hiding)
-  (let* ((include-name-regexp    logview--include-name-regexp)
-         (exclude-name-regexp    logview--exclude-name-regexp)
-         (include-thread-regexp  logview--include-thread-regexp)
-         (exclude-thread-regexp  logview--exclude-thread-regexp)
-         (include-message-regexp logview--include-message-regexp)
-         (exclude-message-regexp logview--exclude-message-regexp)
-         (no-message-filter      (not (or include-message-regexp exclude-message-regexp)))
-         (filters                (list include-name-regexp    exclude-name-regexp
-                                       include-thread-regexp  exclude-thread-regexp
-                                       include-message-regexp exclude-message-regexp))
+(defun logview--apply-parsed-filters (&optional cancel-explicit-hiding)
+  (logview--process-region-entries 1 (1+ (buffer-size)) nil cancel-explicit-hiding
+                                   (lambda (begin end) (make-progress-reporter "Filtering..." begin end))))
+
+(defun logview--process-region-entries (region-begin region-end set-up-entries cancel-explicit-hiding reporter-builder)
+  (let* ((name-filter            (car logview--name-filter))
+         (thread-filter          (car logview--thread-filter))
+         (no-name/thread-filters (and (null name-filter) (null thread-filter)))
+         (message-filter         (car logview--message-filter))
+         (filter-id              (list (cdr logview--name-filter) (cdr logview--thread-filter) (cdr logview--message-filter)))
          ;; Need a copy, since entry matching is always case-sensitive
          ;; (see 'logview--std-matching-and-altering').
          (case-insensitive       case-fold-search))
-    (when (or (not (equal logview--applied-filters filters)) also-cancel-explicit-hiding)
+    (when (or set-up-entries cancel-explicit-hiding (not (equal logview--applied-filter-id filter-id)))
       (logview--std-matching-and-altering
         (save-restriction
           (widen)
-          (goto-char (point-min))
-          (let ((reporter           (make-progress-reporter "Filtering..." (point-min) (point-max) (point)))
-                (hider              (logview--hide-entry-callback 'logview-filtered))
-                (shower             (logview--show-entry-callback 'logview-filtered))
-                (explicit-shower    (and also-cancel-explicit-hiding (logview--show-entry-callback 'logview-hidden-entry)))
-                (num-hidden         0)
-                (num-visible        0)
-                (match-data-storage '(nil))
-                message-begin
-                matches-name/thread)
-            ;; Because 'callback' doesn't get access to match data,
-            ;; while in 'validator' doesn't know all entry limits, we
-            ;; use both and pass 'matches-name/thread' from the
-            ;; validator to the callback.
-            (logview--iterate-entries-forward
-             (lambda (begin after-first-line end)
-               ;; Remember that 'matches-name/thread' is not the final
-               ;; value, we still need to check if entry's message
-               ;; passes filters.
-               (if (and matches-name/thread
-                        (or no-message-filter
-                            ;; Ideally would just match in the buffer
-                            ;; itself, but that's probably unsound due
-                            ;; to anchors.
-                            (let ((message          (buffer-substring-no-properties message-begin end))
-                                  (case-fold-search case-insensitive))
-                              ;; For speed optimization we don't use
-                              ;; 'save-match-data'.
-                              (match-data t match-data-storage)
-                              (prog1
-                                  (and (or (null include-message-regexp)
-                                           (string-match include-message-regexp message))
-                                       (or (null exclude-message-regexp)
-                                           (not (string-match exclude-message-regexp message))))
-                                (set-match-data match-data-storage)))))
-                   (progn (funcall shower begin after-first-line end)
-                          (setq num-visible (1+ num-visible)))
-                 (funcall hider begin after-first-line end)
-                 (setq num-hidden (1+ num-hidden)))
-               ;; Yeah, it's two modification of properties on the
-               ;; same text chunk, but that's rarely used and so
-               ;; hardly important.
-               (when explicit-shower
-                 (funcall explicit-shower begin after-first-line end))
-               (progress-reporter-update reporter end)
-               ;; Always continue.
-               t)
-             nil
-             (lambda ()
-               (let ((name             (match-string logview--name-group))
-                     (thread           (match-string logview--thread-group))
-                     (case-fold-search case-insensitive))
-                 (setq message-begin       (match-end 0)
-                       matches-name/thread (and (or (null include-name-regexp)
-                                                    (string-match include-name-regexp name))
-                                                (or (null exclude-name-regexp)
-                                                    (not (string-match exclude-name-regexp name)))
-                                                (or (null include-thread-regexp)
-                                                    (string-match include-thread-regexp thread))
-                                                (or (null exclude-thread-regexp)
-                                                    (not (string-match exclude-thread-regexp thread))))))
-               ;; Operate on all entries.
-               t))
-            (cond ((= num-hidden 0)
-                   (message (if (cl-every 'null filters) "Filters are reset" "Filtering complete, nothing was hidden")))
-                  ((= num-visible 0)
-                   (message "Filtering complete, all entries were hidden"))
-                  (t
-                   (message "Filtering complete, %d %s out of %d (%.1f%%) %s hidden"
-                            num-hidden (if (= num-hidden 1) "entry" "entries") (+ num-hidden num-visible)
-                            (/ (* num-hidden 100.0) (+ num-hidden num-visible)) (if (= num-hidden 1) "was" "were"))))))))
-    (setq logview--applied-filters filters)))
+          (goto-char region-begin)
+          (let ((anchored (logview--match-current-entry)))
+            (when (and set-up-entries (or (not anchored) (> (point) region-begin)))
+              ;; Asked to set up entries, but the buffer begins with
+              ;; or completely consists of text we don't recognize.
+              (put-text-property 1 (if anchored (match-beginning 0) (1+ (buffer-size))) 'face      nil)
+              (put-text-property 1 (if anchored (match-beginning 0) (1+ (buffer-size))) 'invisible nil))
+            (when anchored
+              (let ((reporter           (when reporter-builder (funcall reporter-builder (match-beginning 0) region-end)))
+                    (have-timestamp     (memq 'timestamp logview--submode-features))
+                    (have-level         (memq 'level     logview--submode-features))
+                    (have-name          (memq 'name      logview--submode-features))
+                    (have-thread        (memq 'thread    logview--submode-features))
+                    (hider              (logview--hide-entry-callback 'logview-filtered))
+                    (shower             (logview--show-entry-callback 'logview-filtered))
+                    (explicit-shower    (when cancel-explicit-hiding (logview--show-entry-callback 'logview-hidden-entry)))
+                    (num-hidden         0)
+                    (num-visible        0)
+                    (match-data-storage '(nil))
+                    message-begin
+                    matches-name/thread
+                    level-data)
+                ;; Because 'callback' doesn't get access to match
+                ;; data, while 'validator' doesn't know all entry
+                ;; limits, we use both and pass 'matches-name/thread'
+                ;; from the validator to the callback.
+                (logview--iterate-entries-forward
+                 (lambda (begin after-first-line end)
+                   (when (and set-up-entries (< after-first-line end) have-level)
+                     (when have-level
+                       (put-text-property after-first-line end 'face (nth 1 level-data)))
+                     (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back end)
+                                        'invisible (list (nth 0 level-data) 'logview-details)))
+                   ;; Remember that 'matches-name/thread' is not the
+                   ;; final value, we still need to check if entry's
+                   ;; message passes filters.
+                   (if (and matches-name/thread
+                            (or (null message-filter)
+                                ;; Ideally would just match in the
+                                ;; buffer itself, but that's probably
+                                ;; unsound due to anchors.
+                                (prog2
+                                    ;; For speed optimization we don't
+                                    ;; use 'save-match-data'.
+                                    (match-data t match-data-storage)
+                                    (let ((case-fold-search case-insensitive))
+                                      (funcall message-filter (buffer-substring-no-properties message-begin end)))
+                                  (set-match-data match-data-storage))))
+                       (unless set-up-entries
+                         (funcall shower begin after-first-line end)
+                         (setq num-visible (1+ num-visible)))
+                     (funcall hider begin after-first-line end)
+                     (setq num-hidden (1+ num-hidden)))
+                   (when explicit-shower
+                     (funcall explicit-shower begin after-first-line end))
+                   (when reporter
+                     (progress-reporter-update reporter end))
+                   ;; Continuing condition.
+                   (< end region-end))
+                 nil
+                 (lambda ()
+                   (let ((case-fold-search case-insensitive))
+                     (when set-up-entries
+                       (when have-level
+                         (setq level-data (cdr (assoc (match-string logview--level-group) logview--submode-level-data)))
+                         ;; Point is guaranteed to be at the start of the next line.
+                         (put-text-property (match-beginning 0) (point) 'face (nth 1 level-data))
+                         (put-text-property (logview--linefeed-back-checked (match-beginning 0)) (logview--linefeed-back (point))
+                                            'invisible (list (nth 0 level-data)))
+                         (add-face-text-property (match-beginning logview--level-group)
+                                                 (match-end       logview--level-group)
+                                                 (nth 2 level-data)))
+                       (when have-timestamp
+                         (add-face-text-property (match-beginning logview--timestamp-group)
+                                                 (match-end       logview--timestamp-group)
+                                                 'logview-timestamp))
+                       (when have-name
+                         (add-face-text-property (match-beginning logview--name-group)
+                                                 (match-end       logview--name-group)
+                                                 'logview-name))
+                       (when have-thread
+                         (add-face-text-property (match-beginning logview--thread-group)
+                                                 (match-end       logview--thread-group)
+                                                 'logview-thread)))
+                     (setq message-begin       (match-end 0)
+                           matches-name/thread (or no-name/thread-filters
+                                                   ;; Since the filters involve regexp matching themselves,
+                                                   ;; we need to store log entry parts before calling any.
+                                                   (let ((name   (when name-filter   (match-string-no-properties logview--name-group)))
+                                                         (thread (when thread-filter (match-string-no-properties logview--thread-group))))
+                                                     (and (or (null name)   (funcall name-filter   name))
+                                                          (or (null thread) (funcall thread-filter thread)))))))
+                   ;; Operate on all entries.
+                   t))
+                (if set-up-entries
+                    (when reporter
+                      (progress-reporter-done reporter))
+                  (cond ((= num-hidden 0)
+                         (message (if (equal filter-id logview--empty-filter-id) "Filters are reset" "Filtering complete, nothing was hidden")))
+                        ((= num-visible 0)
+                         (message "Filtering complete, all entries were hidden"))
+                        (t
+                         (message "Filtering complete, %d %s out of %d (%.1f%%) %s hidden"
+                                  num-hidden (if (= num-hidden 1) "entry" "entries") (+ num-hidden num-visible)
+                                  (/ (* num-hidden 100.0) (+ num-hidden num-visible)) (if (= num-hidden 1) "was" "were")))))))))
+      (setq logview--applied-filter-id filter-id)))))
 
 ;; FIXME: Resulting regexp will not be valid if any of the options
 ;;        uses group backreferences (\N) and maybe some other
 ;;        constructs.
 (defun logview--build-filter-regexp (options)
   (when options
-    (mapconcat 'identity options "\\|")))
+    ;; To prevent refiltering on insignificant changes, we enforce
+    ;; canonical option ordering and drop any duplicates.
+    (mapconcat 'identity (delete-consecutive-dups (sort options 'string<)) "\\|")))
 
 
 (defun logview--show-entry-callback (hider)
@@ -1621,74 +1669,10 @@ Optional third argument is to make the function suitable for
 `after-change-functions' and is ignored there.  Special value
 'report-progress for this argument is treated differently."
   (when logview--process-buffer-changes
-    (save-excursion
-      (save-match-data
-        (save-restriction
-          (with-silent-modifications
-            (widen)
-            (goto-char begin)
-            (forward-line 0)
-            (let ((inhibit-read-only t)
-                  (case-fold-search  nil)
-                  (anchored          t))
-              ;; Inlining `logview--match-successive-entries' for
-              ;; performance reasons.
-              (unless (or (looking-at logview--entry-regexp)
-                          (re-search-backward logview--entry-regexp nil t))
-                (let ((anchor (if (re-search-forward logview--entry-regexp nil t)
-                                  (match-beginning 0)
-                                (setq anchored nil)
-                                (point-max))))
-                  (put-text-property 1 anchor 'face      nil)
-                  (put-text-property 1 anchor 'invisible nil)))
-              (when anchored
-                (let* ((entry-begin    (match-beginning 0))
-                       (after-first-line)
-                       (level-data)
-                       (reporter       (when (eq old-length 'report-progress)
-                                         (make-progress-reporter "Parsing buffer..." entry-begin end entry-begin)))
-                       (have-timestamp (memq 'timestamp logview--submode-features))
-                       (have-level     (memq 'level     logview--submode-features))
-                       (have-name      (memq 'name      logview--submode-features))
-                       (have-thread    (memq 'thread    logview--submode-features)))
-                  (while (progn
-                           (forward-line)
-                           (setq after-first-line (point))
-                           (when have-level
-                             (setq level-data (cdr (assoc (match-string logview--level-group) logview--submode-level-data)))
-                             (put-text-property entry-begin after-first-line 'face (nth 1 level-data))
-                             (put-text-property (logview--linefeed-back-checked entry-begin) (logview--linefeed-back after-first-line)
-                                                'invisible (list (nth 0 level-data)))
-                             (add-face-text-property (match-beginning logview--level-group)
-                                                     (match-end       logview--level-group)
-                                                     (nth 2 level-data)))
-                           (when have-timestamp
-                             (add-face-text-property (match-beginning logview--timestamp-group)
-                                                     (match-end       logview--timestamp-group)
-                                                     'logview-timestamp))
-                           (when have-name
-                             (add-face-text-property (match-beginning logview--name-group)
-                                                     (match-end       logview--name-group)
-                                                     'logview-name))
-                           (when have-thread
-                             (add-face-text-property (match-beginning logview--thread-group)
-                                                     (match-end       logview--thread-group)
-                                                     'logview-thread))
-                           (setq entry-begin (if (or (looking-at logview--entry-regexp)
-                                                     (re-search-forward logview--entry-regexp nil t))
-                                                 (match-beginning 0)
-                                               (point-max)))
-                           ;; Here 'entry-begin' is actually for the next entry.
-                           (when (< after-first-line entry-begin)
-                             (when have-level
-                               (put-text-property after-first-line entry-begin 'face (nth 1 level-data)))
-                             (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back entry-begin)
-                                                'invisible (list (nth 0 level-data) 'logview-details)))
-                           (when reporter
-                             (progress-reporter-update reporter end))
-                           (< entry-begin end)))
-                  (when reporter
-                    (progress-reporter-done reporter)))))))))))
+    (save-match-data
+      (logview--process-region-entries begin end t nil
+                                       (when (eq old-length 'report-progress)
+                                         (lambda (begin end) (make-progress-reporter "Parsing buffer..." begin end)))))))
 
 (defun logview--buffer-substring-filter (begin end delete)
   "Optionally remove invisible text from the substring."
@@ -1752,7 +1736,7 @@ Optional third argument is to make the function suitable for
     (switch-to-buffer parent)
     (set-window-configuration windows)
     (when save
-      (setq logview--all-current-filters filters)
+      (setq logview--current-filter-text filters)
       (logview--parse-filters)
       (logview--apply-parsed-filters))))
 
@@ -1765,7 +1749,7 @@ Optional third argument is to make the function suitable for
     (insert "\n"))
   ;; Put cursor at the first filter beginning if possible.
   (goto-char 1)
-  (logview--iterate-filter-lines (lambda (type line-begin begin end)
+  (logview--iterate-filter-lines (lambda (type _line-begin begin _end)
                                    (if (member type logview--valid-filter-prefixes)
                                        (progn (goto-char begin) nil)
                                      t)))
