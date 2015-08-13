@@ -81,6 +81,8 @@ active again.
 
 #### Filtering by entry’s logger name, thread or message
 
+See [more detailed description below](#filters-explained).
+
 * Edit current name, thread and message filters: `f` (pops up a separate buffer)
 * Add name include / exclude filter: `a` / `A`
 * Add thread include / exclude filter: `t` / `T`
@@ -110,11 +112,73 @@ active.
 These options can be customized globally and additionally temporarily
 changed in each individual buffer.
 
+* Toggle Auto-Revert mode: `o r`
+* Toggle Auto-Revert Tail mode: `o t`
 * Toggle ‘copy only visible text’: `o v`
 * Toggle ‘search only in messages’: `o m`
 * Toggle ‘show ellipses’: `o e`
 
 #### Miscellaneous
 
+* Customize options that affect submode selection: `o S` or `C-c C-s`
 * Bury buffer: `q`
 * Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
+
+
+### Filters<a id="filters-explained"></a>
+
+In addition to level filtering, Logview supports filtering by entry’s
+logger name, thread and message.
+
+These filters are regular expression and come in two kinds: _include_
+and _exclude_ filters.  If at least one include filter is set, only
+those entries where relevant part matches at least one of regular
+expressions are shown, all others are filtered out.  If any exclude
+filter is set, all entries where relevant part matches its regular
+expression are filtered out (regardless of any other filters) and
+hidden.
+
+Easiest way to add filters is by using `a` / `A` commands (add
+include/exclude name filter correspondingly), `t` / `T` (thread
+filters), and `m` / `M` (message filters).  You can reset all filters
+of given type: `r a` for name, `r t` for thread and `r m` for message
+filters, `R` for all filters at once.
+
+However, oftentimes you need to adjust existing filters, e.g. to fix a
+typo or simply change one, while keeping others the same.  For this
+purpose use `f` command.  It pops up a separate buffer with all
+currently active filters, which you can edit as you like, using any
+standard Emacs features.
+
+Lines beginning with ‘#’ character are comments.  They and empty lines
+are ignored.  Lines for actual filters must start with certain prefix:
+‘a+ ’ (note the single trailing space!) for name inclusion filters,
+‘a- ’ for name inclusion, and similart ‘t+ ’, ‘t- ’, ‘m+ ’, ‘m- ’ for
+thread and message filters.  Additionally, multiline message filters
+must use ‘.. ’ prefix (two dots and a space) for continuation lines.
+The buffer mode has some syntax highlighting support, so you should
+see if anything goes wrong.  The easiest way to figure it out is to
+add a few filters using commands described earlier and then open this
+buffer with `f` and see how they are represented.
+
+#### Filter regexp details
+
+Regular expressions can be matched against entry parts either
+case-sensitively or case-insensitively, depending on standard Emacs
+variable `case-fold-search`.
+
+Filters are matched against relevant entry parts as strings, not
+against the whole buffer.  Therefore, you can use `^` and `$` special
+characters for the expected meaning.  For example, adding `^org` as
+name exclusion filter will hide all entries where logger name _begins_
+with string ‘org’.
+
+Unlike name and thread filters, message filters can span multiple
+lines.  To enter linefeed in message buffer (after `m` or `M`) use
+`C-q C-j`.  When editing a multiline filter with `f`, prefix all
+continuation lines with ‘.. ’.
+
+Commands `a`, `A`, `t` and `T` default to the name (or thread) of the
+current entry.  You can also use `C-p` (`<up>`) to browse history of
+previously entered values and `C-n` (`<down>`) for a few default
+values.
