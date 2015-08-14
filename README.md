@@ -15,6 +15,26 @@ Logback) files as long as they use ISO 8601 timestamps and certain
 UNIX files in `/var/log`.
 
 
+### Installation
+
+Logview is currently not available from any package archives.  But
+installing it from source is not difficult at all.
+
+First, clone the source code:
+
+    $ cd SOME-PATH
+    $ git clone https://github.com/doublep/logview.git
+
+Now, from Emacs execute:
+
+    M-x package-install-file RET SOME-PATH/logview
+
+Alternatively to the second step, add this to your `.emacs` file:
+
+    (add-to-list 'load-path "~/logview")
+    (require 'logview)
+
+
 ### Submodes
 
 Since there is no standard log file format, Logview mode has to try
