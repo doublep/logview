@@ -446,8 +446,9 @@ Levels are ordered least to most important.")
 - level entry face;
 - level string face.")
 
-(defvar-local logview--min-shown-level nil)
+(defvar-local logview--min-shown-level     nil)
 (defvar-local logview--as-important-levels nil)
+(defvar-local logview--hide-all-details    nil)
 
 (defvar-local logview--current-filter-text nil)
 
@@ -574,6 +575,10 @@ that the line is not the first in the buffer."
                        ("H"   logview-hide-region-entries)
                        ("s"   logview-show-entries)
                        ("S"   logview-show-region-entries)
+                       ;; Showing/hiding entry details commands.
+                       ("d"   logview-toggle-entry-details)
+                       ("D"   logview-toggle-region-entry-details)
+                       ("e"   logview-toggle-details-globally)
                        ;; Option changing commands.
                        ("o r" auto-revert-mode)
                        ("o t" auto-revert-tail-mode)
@@ -998,7 +1003,7 @@ This is actually the same as `logview-show-all-levels'."
 After this command only explictly hidden entries and entries
 outside narrowing buffer restrictions remain invisible."
   (interactive)
-  (logview--do-reset-all-filters nil))
+  (logview--do-reset-all-filters nil nil))
 
 (defun logview-reset-all-filters-restrictions-and-hidings ()
   "Reset all visibility restrictions.
@@ -1006,12 +1011,16 @@ In other words, reset all filters, show all explictly hidden
 entries and cancel any narrowing restrictions."
   (interactive)
   (widen)
-  (logview--do-reset-all-filters t))
+  (logview--do-reset-all-filters t t))
 
-(defun logview--do-reset-all-filters (also-cancel-explicit-hiding)
+(defun logview--do-reset-all-filters (also-show-details also-cancel-explicit-hiding)
   (logview--assert)
-  (when (memq 'level logview--submode-features)
-    (logview-reset-level-filters))
+  (when also-show-details
+    (setq logview--hide-all-details nil))
+  (if (memq 'level logview--submode-features)
+      (logview-reset-level-filters)
+    (when also-show-details
+      (logview--update-invisibility-spec)))
   (when (or (memq 'name logview--submode-features) (memq 'thread logview--submode-features) also-cancel-explicit-hiding)
     (logview--parse-filters logview--valid-filter-prefixes)
     (logview--apply-parsed-filters also-cancel-explicit-hiding)))
@@ -1071,28 +1080,112 @@ entries in the region instead (i.e. work just like
     ;; Much like 'logview--iterate-successive-entries', but because of
     ;; peculiar semantics, not broken out into its own function.
     (when (/= n 0)
-      (save-excursion
-        (logview--std-matching-and-altering
-          (let ((direction (cl-signum n))
-                (shower    (logview--show-entry-callback 'logview-hidden-entry)))
-            (funcall (if (< n 0)
-                         'logview--iterate-entries-backward
-                       ;; To "not count" the current entry.
-                       (setq n (1+ n))
-                       'logview--iterate-entries-forward)
-                     (lambda (begin after-first-line entry-end)
-                       (if (invisible-p begin)
-                           (progn
-                             (funcall shower begin after-first-line entry-end)
-                             t)
-                         (/= (setq n (- n direction)) 0))))))))
+      (logview--std-matching-and-altering
+        (let ((direction (cl-signum n))
+              (shower    (logview--show-entry-callback 'logview-hidden-entry)))
+          (funcall (if (< n 0)
+                       'logview--iterate-entries-backward
+                     ;; To "not count" the current entry.
+                     (setq n (1+ n))
+                     'logview--iterate-entries-forward)
+                   (lambda (begin after-first-line entry-end)
+                     (if (invisible-p begin)
+                         (progn
+                           (funcall shower begin after-first-line entry-end)
+                           t)
+                       (/= (setq n (- n direction)) 0)))))))
     (logview--maybe-complain-about-movement n n)))
 
 (defun logview-show-region-entries (begin end)
+  "Explicitly show all log entries in the region.
+
+Note that entries that are currently hidden due to filtering are
+also marked as 'not explicitly hidden'.  However, you will see
+any effect only once you clear or alter the responsible filters."
   (interactive "r")
   (logview--assert)
   (logview--std-matching-and-altering
     (logview--iterate-entries-in-region begin end (logview--show-entry-callback 'logview-hidden-entry))))
+
+
+
+;;; Showing/hiding entry details commands.
+
+(defun logview-toggle-entry-details (&optional arg)
+  "Toggle whether details for current entry are shown.
+If invoked with prefix argument, show them if the argument is
+positive, hide otherwise.
+
+In Transient Mark mode, if the region is active, call
+`logview-toggle-region-entry-details'.  See that function help
+for how toggling works."
+  (interactive (list (if (use-region-p)
+                         (list (or current-prefix-arg 'toggle))
+                       (or current-prefix-arg 'toggle))))
+  (if (consp arg)
+      (logview-toggle-region-entry-details (point) (mark) (car arg))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (logview--std-matching-and-altering
+          (when (logview--match-current-entry)
+            (forward-line)
+            (let ((after-first-line (point))
+                  (end              (if (logview--match-successive-entries 1)
+                                        (match-beginning 0)
+                                      (point-max))))
+              (if (<= end after-first-line)
+                  (error "Current entry has no details")
+                (logview--change-entry-details-visibility after-first-line end
+                                                          (if (eq arg 'toggle)
+                                                              (memq 'logview-hidden-details
+                                                                    (get-text-property (logview--linefeed-back after-first-line) 'invisible))
+                                                            (> (prefix-numeric-value arg) 0)))))))))))
+
+(defun logview-toggle-region-entry-details (begin end &optional arg)
+  "Toggle whether details in the region are shown.
+Toggling works like this: if at least one entry in the region has
+details that are visible, all are hidden.  Otherwise, if all are
+already hidden, they are shown.  If invoked with prefix argument,
+show details if the argument is positive, hide otherwise.
+
+Entries that are in the region only partially are operated on as
+well."
+  (interactive (list (point) (mark) (or current-prefix-arg 'toggle)))
+  (save-excursion
+    (save-restriction
+      (widen)
+      (logview--std-matching-and-altering
+        (when (eq arg 'toggle)
+          (setq arg 1)
+          (logview--iterate-entries-in-region begin end (lambda (_begin after-first-line end)
+                                                          (if (or (>= after-first-line end)
+                                                                  (memq 'logview-hidden-details (get-text-property after-first-line 'invisible)))
+                                                              t
+                                                            (setq arg 0)
+                                                            nil))))
+        (let ((show (> (prefix-numeric-value arg) 0)))
+          (logview--iterate-entries-in-region begin end (lambda (_begin after-first-line end)
+                                                          (logview--change-entry-details-visibility after-first-line end show)
+                                                          t)))))))
+
+(defun logview--change-entry-details-visibility (after-first-line end show)
+  (let* ((current-invisible (get-text-property (logview--linefeed-back after-first-line) 'invisible))
+         (new-invisible     current-invisible))
+    (if show
+        (setq new-invisible (remq 'logview-hidden-details new-invisible))
+      (unless (memq 'logview-hidden-details new-invisible)
+        (push 'logview-hidden-details new-invisible)))
+    (unless (eq new-invisible current-invisible)
+      (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back end) 'invisible new-invisible))))
+
+
+(defun logview-toggle-details-globally (&optional arg)
+  (interactive (list (or current-prefix-arg 'toggle)))
+  (logview--toggle-option-locally 'logview--hide-all-details arg (called-interactively-p 'interactive)
+                                  "All entry messages details are now hidden"
+                                  "Details of entry messages are now visible unless hidden explicitly")
+  (logview--update-invisibility-spec))
 
 
 
@@ -1413,6 +1506,8 @@ See `logview--iterate-entries-forward' for details."
           (setq found t))
         (unless found
           (setq invisibility-spec (cons (nth 0 (cdr (assoc (car level-pair) logview--submode-level-data))) invisibility-spec)))))
+    (when logview--hide-all-details
+      (setq invisibility-spec (cons 'logview-details invisibility-spec)))
     (setq buffer-invisibility-spec
           (if logview-show-ellipses
               (mapcar (lambda (x) (cons x t)) invisibility-spec)

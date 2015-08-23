@@ -127,6 +127,18 @@ See [more detailed description below](#filters-explained).
 In Transient Mark mode `h` and `s` operate on region when mark is
 active.
 
+#### Explicitly hide or show details of individual entries
+
+The mode terms all message lines after the first ‘details’.
+Oftentimes these contain exception stacktrace, but most logging
+libraries let you write anything here.
+
+* Toggle details of current entry: `d`
+* Toggle details of all entries in the region: `D`
+* Toggle details in the whole buffer: `e`
+
+In Transient Mark mode `d` operates on region when mark is active.
+
 #### Change options for current buffer
 
 These options can be customized globally and additionally temporarily
