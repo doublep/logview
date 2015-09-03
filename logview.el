@@ -295,6 +295,16 @@ a Logview buffer type \\<logview-mode-map>\\[auto-revert-mode] or \\<logview-mod
                   (const :tag "Auto-Revert mode"      auto-revert-mode)
                   (const :tag "Auto-Revert Tail mode" auto-revert-tail-mode)))
 
+(defcustom logview-reassurance-chars 5000
+  "Compare this many characters before appending file tail.
+This value is used by the command `logview-append-log-file-tail'
+to compare part of the file on disk with part of the buffer to
+make sure (even if not with 100% guarantee) that the buffer
+really represents beginning of its backing file.  The command
+will refuse to complete operation unless this check succeeds."
+  :group 'logview
+  :type  'integer)
+
 
 (defcustom logview-copy-visible-text-only t
   "Whether to copy, kill, etc. only visible selected text.
@@ -590,6 +600,8 @@ that the line is not the first in the buffer."
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
                        ("?"   logview-mode-help)
+                       ("x"   logview-append-log-file-tail)
+                       ("X"   logview-revert-buffer)
                        ("q"   bury-buffer)
                        ;; Simplified universal argument command
                        ;; rebindings.  Digits and minus are set up by
@@ -1250,7 +1262,76 @@ These are:
 
 (defun logview-mode-help ()
   (interactive)
+  ;; FIXME: Write
   )
+
+(defun logview-append-log-file-tail ()
+  "Load log file tail into the buffer preserving active filters.
+This command won't ask for confirmation, but cannot be used if
+the buffer is modified.
+
+Before loading the tail it verifies that preceding contents
+matches that of the buffer.  The command does that by comparing
+`logview-reassurance-chars' immediately before the tail with the
+end of the buffer. This is of course not fool-proof, but for log
+files almost always good enough, especially if they contain
+timestamps.
+
+This can be seen as an alternative to `auto-revert-tail-mode':
+instead of automatic reverting you ask for it explicitly.  It
+should be as simple as typing \\<logview-mode-map>\\[logview-append-log-file-tail], as no confirmations are asked."
+  (interactive)
+  (when (buffer-modified-p)
+    (error "Cannot append file tail to a modified buffer"))
+  (let* ((buffer             (current-buffer))
+         (file               buffer-file-name)
+         (size               (1+ (buffer-size)))
+         (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
+         (compare-from       (- size reassurance-chars))
+         ;; 'position-bytes' appears to count from 1, yet we need
+         ;; zero-based offset.
+         (compare-from-bytes (1- (position-bytes compare-from))))
+    (with-temp-buffer
+      (insert-file-contents file nil compare-from-bytes nil)
+      (let ((temporary      (current-buffer))
+            (temporary-size (buffer-size)))
+        (unless (and (>= temporary-size reassurance-chars)
+                     (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
+                              (with-current-buffer buffer
+                                (buffer-substring-no-properties compare-from size))))
+          (error "Buffer contents isn't the head of %s anymore" file))
+        (if (= temporary-size reassurance-chars)
+            (message "Backing file %s hasn't grown" file)
+          (with-current-buffer buffer
+            (let ((was-modified      (buffer-modified-p))
+                  (inhibit-read-only t)
+                  ;; This is to avoid unnecessary confirmation about
+                  ;; modifying a buffer with externally changed file.
+                  (buffer-file-name  nil))
+              (save-restriction
+                (widen)
+                (save-excursion
+                  (goto-char (point-max))
+                  (insert-buffer-substring-no-properties temporary (1+ reassurance-chars) (1+ temporary-size))))
+              (restore-buffer-modified-p was-modified))
+            (message "Appended the tail of file %s" file)))))))
+
+(defun logview-revert-buffer ()
+  "Revert the buffer preserving active filters.
+This command won't ask for confirmation unless the buffer is
+modified.
+
+This can be seen as an alternative to `auto-revert-mode': instead
+of automatic reverting you ask for it explicitly.  It should be
+as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirmations are asked."
+  (interactive)
+  (let ((revert-without-query (when buffer-file-name (list (regexp-quote buffer-file-name))))
+        (was-read-only        buffer-read-only))
+    (revert-buffer nil nil t)
+    ;; Apparently 'revert-buffer' resets this.
+    (read-only-mode (if was-read-only 1 0)))
+  ;; If reverting fails we just won't even get here.
+  (message "Reverted the buffer"))
 
 
 
