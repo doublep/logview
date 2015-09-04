@@ -1432,8 +1432,8 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
             (read-only-mode 1)
             (when buffer-file-name
               (pcase logview-auto-revert-mode
-                ('auto-revert-mode      (auto-revert-mode      1))
-                ('auto-revert-tail-mode (auto-revert-tail-mode 1))))
+                (`auto-revert-mode      (auto-revert-mode      1))
+                (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
             (throw 'success nil))
         (when (not (memq 'timestamp features))
           ;; Else we will maybe retry with different timestamp formats.
