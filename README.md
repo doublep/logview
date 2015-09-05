@@ -17,8 +17,14 @@ UNIX files in `/var/log`.
 
 ### Installation
 
-Logview is currently not available from any package archives.  But
-installing it from source is not difficult at all.
+Logview is available from [MELPA](http://melpa.org/#/logview).
+Assuming your `package-archives` lists MELPA, just type
+
+    M-x package-install RET logview RET
+
+to install it.
+
+Alternatively, installing Logview from source is not difficult either.
 
 First, clone the source code:
 
