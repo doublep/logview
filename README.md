@@ -25,7 +25,6 @@ Assuming your `package-archives` lists MELPA, just type
 to install it.
 
 Alternatively, installing Logview from source is not difficult either.
-
 First, clone the source code:
 
     $ cd SOME-PATH
