@@ -960,9 +960,9 @@ that doesn't match any of entered expression."
                                                                             (thread  . logview--thread-regexp-history)
                                                                             (message . logview--message-regexp-history)))))))
     (unless (logview--valid-regexp-p regexp)
-      (error "Invalid regular expression"))
+      (user-error "Invalid regular expression"))
     (when (and (memq type '(name thread)) (string-match "\n" regexp))
-      (error "Regular expression must not span several lines"))
+      (user-error "Regular expression must not span several lines"))
     (setq logview--current-filter-text (concat logview--current-filter-text
                                                (when (and logview--current-filter-text
                                                           (not (string-suffix-p "\n" logview--current-filter-text)))
@@ -1147,7 +1147,7 @@ for how toggling works."
                                         (match-beginning 0)
                                       (point-max))))
               (if (<= end after-first-line)
-                  (error "Current entry has no details")
+                  (user-error "Current entry has no details")
                 (logview--change-entry-details-visibility after-first-line end
                                                           (if (eq arg 'toggle)
                                                               (memq 'logview-hidden-details
@@ -1282,7 +1282,7 @@ instead of automatic reverting you ask for it explicitly.  It
 should be as simple as typing \\<logview-mode-map>\\[logview-append-log-file-tail], as no confirmations are asked."
   (interactive)
   (when (buffer-modified-p)
-    (error "Cannot append file tail to a modified buffer"))
+    (user-error "Cannot append file tail to a modified buffer"))
   (let* ((buffer             (current-buffer))
          (file               buffer-file-name)
          (size               (1+ (buffer-size)))
@@ -1299,7 +1299,7 @@ should be as simple as typing \\<logview-mode-map>\\[logview-append-log-file-tai
                      (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
                               (with-current-buffer buffer
                                 (buffer-substring-no-properties compare-from size))))
-          (error "Buffer contents isn't the head of %s anymore" file))
+          (user-error "Buffer contents doesn't match the head of %s anymore" file))
         (if (= temporary-size reassurance-chars)
             (message "Backing file %s hasn't grown" file)
           (with-current-buffer buffer
@@ -1355,7 +1355,7 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
   (let* ((format    (cdr (assq 'format    definition)))
          (timestamp (cdr (assq 'timestamp definition))))
     (unless (and (stringp format) (> (length format) 0))
-      (error "Invalid submode '%s': no format string" name))
+      (user-error "Invalid submode '%s': no format string" name))
     (catch 'failed
       (if timestamp
           (dolist (name timestamp)
@@ -1442,20 +1442,20 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
 
 (defun logview--assert (&rest assertions)
   (unless (logview-initialized-p)
-    (error "Couldn't determine log format; press C-c C-s to customize relevant options"))
+    (user-error "Couldn't determine log format; press C-c C-s to customize relevant options"))
   (dolist (assertion assertions)
     (unless (or (eq assertion 'message) (memq assertion logview--submode-features))
-      (error (cdr (assq assertion '((level  . "Log lacks entry levels")
-                                    (name   . "Log lacks logger names")
-                                    (thread . "Log doesn't include thread names"))))))))
+      (user-error (cdr (assq assertion '((level  . "Log lacks entry levels")
+                                         (name   . "Log lacks logger names")
+                                         (thread . "Log doesn't include thread names"))))))))
 
 
 (defun logview--maybe-complain-about-movement (direction remaining &optional as-important-entries)
   ;; Using 'equal' since 'remaining' may also be nil.
   (unless (equal remaining 0)
-    (error (if as-important-entries
-               (if (> direction 0) "No next (visible) as important entry" "No previous (visible) as important entry")
-             (if (> direction 0) "No next (visible) entry" "No previous (visible) entry")))))
+    (user-error (if as-important-entries
+                    (if (> direction 0) "No next (visible) as important entry" "No previous (visible) as important entry")
+                  (if (> direction 0) "No next (visible) entry" "No previous (visible) entry")))))
 
 
 (defun logview--match-current-entry ()
@@ -1858,7 +1858,7 @@ which is usually one line beyond END."
                                             (when (or (equal name key) (member key (cdr (assq 'aliases value))))
                                               (throw 'found value)))
            alists)
-    (error "Unknown %s '%s'" type key)))
+    (user-error "Unknown %s '%s'" type key)))
 
 
 
