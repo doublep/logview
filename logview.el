@@ -66,7 +66,7 @@ This value is used as the fallback for customizable
                 (debug       "DEBUG")
                 (trace       "TRACE")
                 (aliases     "Log4j" "Log4j2" "Logback")))
-    ("JUL"   . ((error       "ERROR")
+    ("JUL"   . ((error       "SEVERE")
                 (warning     "WARNING")
                 (information "INFO")
                 (debug       "CONFIG" "FINE")
