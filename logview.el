@@ -1298,7 +1298,9 @@ should be as simple as typing \\<logview-mode-map>\\[logview-append-log-file-tai
         (unless (and (>= temporary-size reassurance-chars)
                      (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
                               (with-current-buffer buffer
-                                (buffer-substring-no-properties compare-from size))))
+                                (save-restriction
+                                  (widen)
+                                  (buffer-substring-no-properties compare-from size)))))
           (user-error "Buffer contents doesn't match the head of %s anymore" file))
         (if (= temporary-size reassurance-chars)
             (message "Backing file %s hasn't grown" file)
