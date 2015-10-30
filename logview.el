@@ -1373,7 +1373,7 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
   (let* ((search-from 0)
          (next)
          (end)
-         (terminator)
+         starter terminator
          (levels)
          (parts '("^"))
          (features)
@@ -1383,6 +1383,8 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
       (when (> next search-from)
         (funcall add-text-part search-from next))
       (setq end        (match-end 0)
+            starter    (when (> next 0)
+                         (aref format (1- next)))
             terminator (when (< end (length format))
                          (aref format end)))
       (cond ((match-beginning logview--timestamp-group)
@@ -1399,12 +1401,28 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
             (t
              (dolist (k (list logview--name-group logview--thread-group))
                (when (match-beginning k)
-                 (push (format "\\(?%d:%s*\\)" k (cond ((and terminator (/= terminator ? ))
-                                                        (format "[^%c]*" terminator))
-                                                       (terminator
-                                                        "[^ \t]+")
-                                                       (t
-                                                        ".+")))
+                 (push (format "\\(?%d:%s\\)" k
+                               (cond ((and starter terminator
+                                           (or (and (= starter ?\() (= terminator ?\)))
+                                               (and (= starter ?\[) (= terminator ?\]))))
+                                      ;; See https://github.com/doublep/logview/issues/2
+                                      ;; We allow _one_ level of nested parens inside
+                                      ;; parenthesized THREAD or NAME.  Allowing more would
+                                      ;; complicate regexp even further.  Unlimited nesting
+                                      ;; level is not possible will regexps at all.
+                                      ;;
+                                      ;; 'rx-to-string' is used to avoid escaping things
+                                      ;; ourselves.
+                                      (rx-to-string `(seq (* (not (any ,starter ,terminator ?\n)))
+                                                          (* ,starter (* (not (any ?\n))) ,terminator
+                                                             (* (not (any ,starter ,terminator ?\n)))))
+                                                    t))
+                                     ((and terminator (/= terminator ? ))
+                                      (format "[^%c\n]*" terminator))
+                                     (terminator
+                                      "[^ \t\n]+")
+                                     (t
+                                      ".+")))
                        parts)
                  (push (if (= k logview--name-group) 'name 'thread) features)))))
       (setq search-from end))
