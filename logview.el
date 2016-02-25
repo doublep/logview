@@ -600,6 +600,7 @@ that the line is not the first in the buffer."
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
                        ("?"   logview-mode-help)
+                       ("g"   logview-refresh-buffer-as-needed)
                        ("x"   logview-append-log-file-tail)
                        ("X"   logview-revert-buffer)
                        ("q"   bury-buffer)
@@ -1265,6 +1266,22 @@ These are:
   ;; FIXME: Write
   )
 
+(defun logview-refresh-buffer-as-needed ()
+  "Append log file tail or else revert the whole buffer.
+This is conceptually the same as typing \\<logview-mode-map>\\[logview-append-log-file-tail], followed by \\<logview-mode-map>\\[logview-revert-buffer] if the
+first command fails.
+
+This command is faster than reloading the whole buffer in the
+common case when the log file grows by appending.  Unlike
+`logview-append-log-file-tail', it works in all cases, falling
+back to full revert if the file appears to have changed in a
+different way.
+
+In all cases the current filters are preserved."
+  (interactive)
+  (unless (and (not (buffer-modified-p)) (logview--do-append-log-file-tail t))
+    (logview-revert-buffer)))
+
 (defun logview-append-log-file-tail ()
   "Load log file tail into the buffer preserving active filters.
 This command won't ask for confirmation, but cannot be used if
@@ -1283,40 +1300,7 @@ should be as simple as typing \\<logview-mode-map>\\[logview-append-log-file-tai
   (interactive)
   (when (buffer-modified-p)
     (user-error "Cannot append file tail to a modified buffer"))
-  (let* ((buffer             (current-buffer))
-         (file               buffer-file-name)
-         (size               (1+ (buffer-size)))
-         (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
-         (compare-from       (- size reassurance-chars))
-         ;; 'position-bytes' appears to count from 1, yet we need
-         ;; zero-based offset.
-         (compare-from-bytes (1- (position-bytes compare-from))))
-    (with-temp-buffer
-      (insert-file-contents file nil compare-from-bytes nil)
-      (let ((temporary      (current-buffer))
-            (temporary-size (buffer-size)))
-        (unless (and (>= temporary-size reassurance-chars)
-                     (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
-                              (with-current-buffer buffer
-                                (save-restriction
-                                  (widen)
-                                  (buffer-substring-no-properties compare-from size)))))
-          (user-error "Buffer contents doesn't match the head of %s anymore" file))
-        (if (= temporary-size reassurance-chars)
-            (message "Backing file %s hasn't grown" file)
-          (with-current-buffer buffer
-            (let ((was-modified      (buffer-modified-p))
-                  (inhibit-read-only t)
-                  ;; This is to avoid unnecessary confirmation about
-                  ;; modifying a buffer with externally changed file.
-                  (buffer-file-name  nil))
-              (save-restriction
-                (widen)
-                (save-excursion
-                  (goto-char (point-max))
-                  (insert-buffer-substring-no-properties temporary (1+ reassurance-chars) (1+ temporary-size))))
-              (restore-buffer-modified-p was-modified))
-            (message "Appended the tail of file %s" file)))))))
+  (logview--do-append-log-file-tail))
 
 (defun logview-revert-buffer ()
   "Revert the buffer preserving active filters.
@@ -1334,6 +1318,47 @@ as simple as typing \\<logview-mode-map>\\[logview-revert-buffer], as no confirm
     (read-only-mode (if was-read-only 1 0)))
   ;; If reverting fails we just won't even get here.
   (message "Reverted the buffer"))
+
+(defun logview--do-append-log-file-tail (&optional no-errors)
+  "Perform the work of `logview-append-log-file-tail'.
+If NO-ERRORS is non-nil and the file has changed in a non-growing
+way, returns nil rather than barking.  In case of success, always
+returns non-nil."
+  (let* ((buffer             (current-buffer))
+         (file               buffer-file-name)
+         (size               (1+ (buffer-size)))
+         (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
+         (compare-from       (- size reassurance-chars))
+         ;; 'position-bytes' appears to count from 1, yet we need
+         ;; zero-based offset.
+         (compare-from-bytes (1- (position-bytes compare-from))))
+    (with-temp-buffer
+      (insert-file-contents file nil compare-from-bytes nil)
+      (let ((temporary      (current-buffer))
+            (temporary-size (buffer-size)))
+        (if (and (>= temporary-size reassurance-chars)
+                     (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
+                              (with-current-buffer buffer
+                                (save-restriction
+                                  (widen)
+                                  (buffer-substring-no-properties compare-from size)))))
+            (if (= temporary-size reassurance-chars)
+                (message "Backing file %s hasn't grown" file)
+              (with-current-buffer buffer
+                (let ((was-modified      (buffer-modified-p))
+                      (inhibit-read-only t)
+                      ;; This is to avoid unnecessary confirmation about
+                      ;; modifying a buffer with externally changed file.
+                      (buffer-file-name  nil))
+                  (save-restriction
+                    (widen)
+                    (save-excursion
+                      (goto-char (point-max))
+                      (insert-buffer-substring-no-properties temporary (1+ reassurance-chars) (1+ temporary-size))))
+                  (restore-buffer-modified-p was-modified))
+                (message "Appended the tail of file %s" file)))
+          (unless no-errors
+            (user-error "Buffer contents doesn't match the head of %s anymore" file)))))))
 
 
 

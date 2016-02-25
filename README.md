@@ -159,6 +159,7 @@ changed in each individual buffer.
 
 * Customize options that affect submode selection: `o S` or `C-c C-s`
 * Bury buffer: `q`
+* Refresh the buffer (appending, if possible) preserving active filters: `g`
 * Append log file tail to the buffer: `x`
 * Revert the buffer preserving active filters: `X`
 * Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
