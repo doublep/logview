@@ -82,6 +82,7 @@ This alist value is used as the fallback for customizable
   (let ((HH:mm:ss          "[012][0-9]:[0-5][0-9]:[0-5][0-9]")
         (h:mm:ss           "[ 01]?[0-9]:[0-5][0-9]:[0-5][0-9]")
         (.SSS              "[.,][0-9]\\{3\\}")
+        (.UUUUUU           "[.,][0-9]\\{6\\}")
         (a                 " [AP]M")
         (yyyy-MM-dd        "[0-9]\\{4\\}-[01][0-9]-[0-3][0-9]")
         (MMM               (regexp-opt '("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")))
@@ -90,6 +91,9 @@ This alist value is used as the fallback for customizable
     (list (list "ISO 8601 datetime + millis"
                 (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .SSS))
                 (list 'aliases "yyyy-MM-dd HH:mm:ss.SSS"))
+          (list "ISO 8601 datetime + micros"
+                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .UUUUUU))
+                (list 'aliases "yyyy-MM-dd HH:mm:ss.UUUUUU"))
           (list "ISO 8601 datetime"
                 (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss))
                 (list 'aliases "yyyy-MM-dd HH:mm:ss"))
