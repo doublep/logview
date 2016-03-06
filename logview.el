@@ -492,6 +492,62 @@ Levels are ordered least to most important.")
 ")
 
 
+(defvar logview--cheat-sheet
+  '(("Movement"
+     (logview-go-to-message-beginning                                        "Beginning of entry’s message")
+     (logview-next-entry                 logview-previous-entry              "Next / previous entry")
+     (logview-next-as-important-entry    logview-previous-as-important-entry "Next / previous ‘as important’ entry")
+     (logview-first-entry                logview-last-entry                  "First / last entry")
+     "‘As important’ means entries with the same or higher level.")
+    ("Narrowing and widening"
+     (logview-narrow-from-this-entry     logview-narrow-up-to-this-entry     "Narrow from / up to this entry")
+     (widen                                                                  "Widen")
+     (logview-widen-upwards              logview-widen-downwards             "Widen upwards / downwards"))
+    ("Filtering by level"
+     (logview-show-only-errors                                               "Show only errors")
+     (logview-show-errors-and-warnings                                       "Show errors and warnings")
+     (logview-show-errors-warnings-and-information                           "Show errors, warnings and information")
+     (logview-show-errors-warnings-information-and-debug                     "Show all levels except trace")
+     (logview-show-all-levels                                                "Show entries of all levels")
+     (logview-show-only-as-important                                         "Show entries ‘as important’ as current one"))
+    ("Text-based filtering"
+     (logview-edit-filters                                                   "Edit filters as text in a separate buffer")
+     (logview-add-include-name-filter    logview-add-exclude-name-filter     "Add name include / exclude filter")
+     (logview-add-include-thread-filter  logview-add-exclude-thread-filter   "Add thread include / exclude filter")
+     (logview-add-include-message-filter logview-add-exclude-message-filter  "Add message include / exclude filter"))
+    ("Resetting filters"
+     (logview-reset-level-filters                                            "Reset level filters")
+     (logview-reset-name-filters                                             "Reset name filters")
+     (logview-reset-thread-filters                                           "Reset thread filters")
+     (logview-reset-message-filters                                          "Reset message filters")
+     (logview-reset-all-filters                                              "Reset all filters")
+     (logview-reset-all-filters-restrictions-and-hidings                     "Reset filters, widen and show explicitly hidden entries"))
+    ("Explicitly hide or show entries"
+     (logview-hide-entry                                                     "Hide entry")
+     (logview-hide-region-entries                                            "Hide entries in the region")
+     (logview-show-entries                                                   "Show some explicitly hidden entries")
+     (logview-show-region-entries                                            "Show explicitly hidden entries in the region"))
+    ("Hide or show details of individual entries"
+     (logview-toggle-entry-details                                           "Toggle details of current entry")
+     (logview-toggle-region-entry-details                                    "Toggle details of entries in the region")
+     (logview-toggle-details-globally                                        "Toggle details in the whole buffer")
+     "Here ‘details’ are the message lines after the first.")
+    ("Change options for current buffer"
+     (auto-revert-mode                                                       "Toggle Auto-Revert mode")
+     (auto-revert-tail-mode                                                  "Toggle Auto-Revert Tail mode")
+     (logview-toggle-copy-visible-text-only                                  "Toggle ‘copy only visible text’")
+     (logview-toggle-search-only-in-messages                                 "Toggle ‘search only in messages’")
+     (logview-toggle-show-ellipses                                           "Toggle ‘show ellipses’")
+     "Options can be customized globally or changed in each buffer.")
+    ("Miscellaneous"
+     (logview-customize-submode-options                                      "Customize options that affect submode selection")
+     (bury-buffer                                                            "Bury buffer")
+     (logview-refresh-buffer-as-needed                                       "Append tail or revert the buffer, as needed")
+     (logview-append-log-file-tail                                           "Append log file tail to the buffer")
+     (logview-revert-buffer                                                  "Revert the buffer preserving active filters")
+     "Universal prefix commands are bound without modifiers: \\[universal-argument], \\[negative-argument], \\[digit-argument <0>]..\\[digit-argument <9>].")))
+
+
 
 ;;; Macros and inlined functions.
 
@@ -1267,8 +1323,65 @@ These are:
 
 (defun logview-mode-help ()
   (interactive)
-  ;; FIXME: Write
-  )
+  ;; Just reinitialize the buffer every time to simplify development.
+  (with-current-buffer (get-buffer-create "*Logview cheat sheet*")
+    (let ((inhibit-read-only t))
+      (with-silent-modifications
+        (widen)
+        (delete-region 1 (1+ (buffer-size)))
+        (let ((keys-width 0))
+          (dolist (section logview--cheat-sheet)
+            (dolist (entry (cdr section))
+              ;; Second argument is a hack to prefer 'l 1' to 'l e' and similar.
+              (setq keys-width (max keys-width (length (logview--help-format-keys entry "[1-5]"))))))
+          (dolist (section logview--cheat-sheet)
+            (unless (bobp)
+              (insert "\n"))
+            (insert (propertize (car section) 'face (if (display-graphic-p) 'bold 'font-lock-keyword-face)) "\n")
+            (dolist (entry (cdr section))
+              (if (listp entry)
+                  (insert "  " (logview--help-format-keys entry "[1-5]" keys-width)
+                          "  " (car (last entry)) "\n")
+                (insert "\n  " (replace-regexp-in-string (rx "\\["
+                                                             (group (1+ (any alnum ?-)))
+                                                             (? " <" (group (1+ (not (any ?>)))) ">")
+                                                             "]")
+                                                         (lambda (text)
+                                                           (save-match-data
+                                                             (logview--help-format-keys (list (intern (match-string 1 text))) (match-string 2 text))))
+                                                         entry t t)
+                        "\n")))))))
+    (goto-char 1)
+    (help-mode)
+    (let ((map (make-sparse-keymap)))
+      (set-keymap-parent map help-mode-map)
+      (substitute-key-definition 'revert-buffer 'undefined map help-mode-map)
+      (use-local-map map)))
+    (pop-to-buffer "*Logview cheat sheet*"))
+
+(defun logview--help-format-keys (entry &optional preferred-keys width)
+  (if (listp entry)
+      (let ((strings))
+        (dolist (symbol entry)
+          (when (symbolp symbol)
+            (let ((best-length most-positive-fixnum)
+                  (matched-preferred-keys)
+                  (keys))
+              (dolist (alternative (where-is-internal symbol logview-mode-map))
+                (setq alternative            (key-description alternative)
+                      matches-preferred-keys (when preferred-keys (string-match preferred-keys alternative)))
+                (when (or (< (length alternative) best-length)
+                          (and (= (length alternative) best-length)
+                               matches-preferred-keys
+                               (not matched-preferred-keys)))
+                  (setq keys        alternative
+                        best-length (length keys))))
+              (push (if keys (propertize keys 'face 'font-lock-builtin-face) "") strings))))
+        (let ((string (mapconcat 'identity (nreverse strings) " / ")))
+          (if width
+              (format (format "%%%ds" width) string)
+            string)))
+    ""))
 
 (defun logview-refresh-buffer-as-needed ()
   "Append log file tail or else revert the whole buffer.
