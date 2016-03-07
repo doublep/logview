@@ -1,3 +1,8 @@
+<p><a href="http://www.gnu.org/licenses/gpl-3.0.txt"><img src="https://img.shields.io/badge/license-GPL_3-green.svg" alt="License GPL 3"/></a>
+<a href="http://stable.melpa.org/#/logview"><img src="http://stable.melpa.org/packages/logview-badge.svg" alt="MELPA Stable" title=""/></a>
+<a href="http://melpa.org/#/logview"><img src="http://melpa.org/packages/logview-badge.svg" alt="MELPA" title=""/></a></p>
+
+
 # Logview mode
 
 Logview major mode for Emacs provides syntax highlighting, filtering
@@ -91,7 +96,7 @@ active again.
 
 #### Narrowing and widening
 
-* Narrow from / up to current entry: `[` / `]`
+* Narrow from / up to the current entry: `[` / `]`
 * Widen: `w`
 * Widen upwards / downwards only: `{` / `}`
 
@@ -102,7 +107,7 @@ active again.
 * Show errors, warnings and information: `l 3` or `l i`
 * Show all levels except trace: `l 4` or `l d`
 * Show entries of all levels: `l 5` or `l t`
-* Show entries ‘as important’ as current one: `+` or `l +`
+* Show entries ‘as important’ as the current one: `+` or `l +`
 
 #### Filtering by entry’s logger name, thread or message
 
@@ -138,13 +143,13 @@ The mode terms all message lines after the first ‘details’.
 Oftentimes these contain exception stacktrace, but most logging
 libraries let you write anything here.
 
-* Toggle details of current entry: `d`
+* Toggle details of the current entry: `d`
 * Toggle details of all entries in the region: `D`
 * Toggle details in the whole buffer: `e`
 
 In Transient Mark mode `d` operates on region when mark is active.
 
-#### Change options for current buffer
+#### Change options for the current buffer
 
 These options can be customized globally and additionally temporarily
 changed in each individual buffer.
