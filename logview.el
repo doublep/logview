@@ -1,13 +1,13 @@
 ;;; logview.el --- Major mode for viewing log files  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015 Paul Pogonyshev
+;; Copyright (C) 2015, 2016 Paul Pogonyshev
 
 ;; Author:     Paul Pogonyshev <pogonyshev@gmail.com>
 ;; Maintainer: Paul Pogonyshev <pogonyshev@gmail.com>
 ;; Version:    0.4.2
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "24.1"))
+;; Package-Requires: ((emacs "24.1") (datetime "0.1"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -36,6 +36,7 @@
 ;;; Code:
 
 (eval-when-compile (require 'cl-lib))
+(require 'datetime)
 
 ;; We _append_ self to the list of mode rules so as to not clobber
 ;; other rules, as '.log' is a common file extension.  This also gives
@@ -79,36 +80,20 @@ This alist value is used as the fallback for customizable
   ;; General notices: we silently handle both common decimal
   ;; separators (dot and comma).  In several cases there is optional
   ;; space if the day/hour number is single-digit.
-  (let ((HH:mm:ss          "[012][0-9]:[0-5][0-9]:[0-5][0-9]")
-        (h:mm:ss           "[ 01]?[0-9]:[0-5][0-9]:[0-5][0-9]")
-        (.SSS              "[.,][0-9]\\{3\\}")
-        (.UUUUUU           "[.,][0-9]\\{6\\}")
-        (a                 " [AP]M")
-        (yyyy-MM-dd        "[0-9]\\{4\\}-[01][0-9]-[0-3][0-9]")
-        (MMM               (regexp-opt '("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")))
-        (d                 "[ 1-3]?[0-9]")
-        )
-    (list (list "ISO 8601 datetime + millis"
-                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .SSS))
-                (list 'aliases "yyyy-MM-dd HH:mm:ss.SSS"))
-          (list "ISO 8601 datetime + micros"
-                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss .UUUUUU))
-                (list 'aliases "yyyy-MM-dd HH:mm:ss.UUUUUU"))
-          (list "ISO 8601 datetime"
-                (cons 'regexp  (concat yyyy-MM-dd " " HH:mm:ss))
-                (list 'aliases "yyyy-MM-dd HH:mm:ss"))
-          (list "ISO 8601 time only + millis"
-                (cons 'regexp  (concat HH:mm:ss .SSS))
-                (list 'aliases "HH:mm:ss.SSS"))
-          (list "ISO 8601 time only"
-                (cons 'regexp  HH:mm:ss)
-                (list 'aliases "HH:mm:ss"))
-          (list "MMM d HH:mm:ss"
-                (cons 'regexp  (concat MMM " " d " " HH:mm:ss)))
-          (list "MMM d h:mm:ss a"
-                (cons 'regexp  (concat MMM " " d " " h:mm:ss a)))
-          (list "h:mm:ss a"
-                (cons 'regexp  (concat h:mm:ss a)))))
+  (let (formats)
+    (dolist (data '(("ISO 8601 datetime + millis"  "yyyy-MM-dd HH:mm:ss.SSS")
+                    ("ISO 8601 datetime + micros"  "yyyy-MM-dd HH:mm:ss.SSSSSS")
+                    ("ISO 8601 datetime"           "yyyy-MM-dd HH:mm:ss")
+                    ("ISO 8601 time only + millis" "HH:mm:ss.SSS")
+                    ("ISO 8601 time only + micros" "HH:mm:ss.SSSSSS")
+                    ("ISO 8601 time only"          "HH:mm:ss")
+                    (nil                           "MMM d HH:mm:ss")
+                    (nil                           "MMM d h:mm:ss a")
+                    (nil                           "h:mm:ss a")))
+      (push (list (or (car data) (cadr data)) (cons 'java-pattern (cadr data))) formats)
+      (when (car data)
+        (nconc (car formats) (list (list 'aliases (cadr data))))))
+    (nreverse formats))
   "Alist of standard timestamp formats.
 This value is used as the fallback for customizable
 `logview-additional-timestamp-formats'.")
@@ -263,20 +248,32 @@ A few common formats are already defined by the mode in variable
 take precedence.
 
 Each format has a name, by which it can be referred from submode
-definition.  A format is defined simply by a regular expression
-timestamp must match.  It is strongly recommended to make the
-expression as strict as possible to avoid false positives.  For
-example, if you entered something like \"\\w+\" as an expression,
-this would often lead to Logview mode autoselecting wrong submode
-and thus parsing log files incorrectly.
+definition.  A format is defined by Java-like pattern.  If the
+pattern contains text strings, e.g. month names, you can specify
+the locale to use (defaults to English).
+
+See `datetime' library for the help about patterns, or read
+
+    https://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html
+
+A more complicated and mostly obsolete way to specify format is
+by using regular expression timestamp must match.  It is strongly
+recommended to make the expression as strict as possible to avoid
+false positives.  For example, if you entered something like
+\"\\w+\" as an expression, this would often lead to Logview mode
+autoselecting wrong submode and thus parsing log files
+incorrectly.  Regular expression is ignored if Java pattern is
+also specified.
 
 Timestamp format can have any number of optional aliases, which
 work just as the name."
   :group 'logview
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
-                              (cons :tag "" (const :tag "Format:"  regexp)  regexp)
                               (set :inline t
+                                   (cons :tag "" (const :tag "Java pattern:"       java-pattern) string)
+                                   (cons :tag "" (const :tag "Locale:"             locale)       symbol)
+                                   (cons :tag "" (const :tag "Regular expression:" regexp)       regexp)
                                    (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
   :set   'logview--set-submode-affecting-variable)
 
@@ -443,6 +440,14 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
                                              (group bow "LEVEL" eow)
                                              (group bow "NAME" eow)
                                              (group bow "THREAD" eow))))
+
+(defvar logview--datetime-options '(:second-fractional-extension t
+                                    :only-4-digit-years t
+                                    :accept-leading-space t
+                                    :require-leading-zeros t
+                                    :forbid-unnecessary-zeros t))
+
+(defvar logview--all-timestamp-formats-cache nil)
 
 (defconst logview--valid-filter-prefixes '("a+" "a-" "t+" "t-" "m+" "m-"))
 
@@ -1487,38 +1492,43 @@ returns non-nil."
       (widen)
       (goto-char 1)
       (end-of-line)
-      (let ((first-line (buffer-substring 1 (point))))
+      (let ((first-line (buffer-substring 1 (point)))
+            standard-timestamps)
+        (logview--iterate-split-alists (lambda (_timestamp-name timestamp) (push timestamp standard-timestamps))
+                                       logview-additional-timestamp-formats logview-std-timestamp-formats)
+        (maphash (lambda (regexp _keys)
+                   (push (list (cons 'regexp regexp)) standard-timestamps))
+                 (logview--all-timestamp-formats))
+        (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
           (logview--iterate-split-alists (lambda (name definition)
                                            (condition-case error
-                                               (logview--initialize-submode name definition first-line)
+                                               (logview--initialize-submode name definition standard-timestamps first-line)
                                              (error (warn (error-message-string error)))))
                                          logview-additional-submodes logview-std-submodes))))))
 
-(defun logview--initialize-submode (name definition test-line)
-  (let* ((format    (cdr (assq 'format    definition)))
-         (timestamp (cdr (assq 'timestamp definition))))
+(defun logview--initialize-submode (name definition standard-timestamps test-line)
+  (let* ((format            (cdr (assq 'format    definition)))
+         (timestamp-names   (cdr (assq 'timestamp definition)))
+         (timestamp-options (if timestamp-names
+                                (mapcar (lambda (name)
+                                          (logview--get-split-alists name "timestamp format"
+                                                                     logview-additional-timestamp-formats logview-std-timestamp-formats))
+                                        timestamp-names)
+                              standard-timestamps)))
     (unless (and (stringp format) (> (length format) 0))
       (user-error "Invalid submode '%s': no format string" name))
-    (catch 'failed
-      (if timestamp
-          (dolist (name timestamp)
-            (logview--try-initialize-submode name definition format
-                                             (logview--get-split-alists name "timestamp format"
-                                                                        logview-additional-timestamp-formats logview-std-timestamp-formats)
-                                             test-line))
-        (logview--iterate-split-alists (lambda (_timestamp-name timestamp)
-                                         (logview--try-initialize-submode name definition format timestamp test-line))
-                                       logview-additional-timestamp-formats logview-std-timestamp-formats)))))
+    (logview--try-initialize-submode name definition format timestamp-options test-line)))
 
-(defun logview--try-initialize-submode (name submode format timestamp test-line)
+(defun logview--try-initialize-submode (name submode format timestamp-options test-line)
   (let* ((search-from 0)
-         (next)
-         (end)
+         next
+         end
          starter terminator
-         (levels)
-         (parts '("^"))
-         (features)
+         levels
+         parts
+         timestamp-at
+         features
          (add-text-part (lambda (from to)
                           (push (replace-regexp-in-string "[ \t]+" "[ \t]+" (regexp-quote (substring format from to))) parts))))
     (while (setq next (string-match logview--entry-part-regexp format search-from))
@@ -1530,8 +1540,9 @@ returns non-nil."
             terminator (when (< end (length format))
                          (aref format end)))
       (cond ((match-beginning logview--timestamp-group)
-             (push (format "\\(?%d:%s\\)" logview--timestamp-group (cdr (assq 'regexp timestamp))) parts)
-             (push 'timestamp features))
+             (push nil parts)
+             (push 'timestamp features)
+             (setq timestamp-at parts))
             ((match-beginning logview--level-group)
              (setq levels (logview--get-split-alists (cdr (assq 'levels submode)) "level mapping"
                                                      logview-additional-level-mappings logview-std-level-mappings))
@@ -1573,9 +1584,20 @@ returns non-nil."
     ;; Always behave as if format string ends with whitespace.
     (unless (string-match "[ \t]$" format)
       (push "[ \t]+" parts))
-    (let ((regexp (apply 'concat (reverse parts))))
-      (if (string-match regexp test-line)
-          (progn
+    (setq parts (nreverse parts))
+    (push "^" parts)
+    (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
+      (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
+             (timestamp-regexp  (if timestamp-pattern
+                                    (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
+                                           :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
+                                  (cdr (assq 'regexp timestamp-option)))))
+        (when timestamp-at
+          ;;(message "+++ %s" timestamp-regexp)
+          (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
+        (let ((regexp (apply #'concat parts)))
+          ;;(message "    %s :: %s" format (replace-regexp-in-string "\n" "" regexp))
+          (when (string-match regexp test-line)
             (setq logview--process-buffer-changes t
                   logview--entry-regexp           regexp
                   logview--submode-features       features
@@ -1596,10 +1618,54 @@ returns non-nil."
               (pcase logview-auto-revert-mode
                 (`auto-revert-mode      (auto-revert-mode      1))
                 (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
-            (throw 'success nil))
-        (when (not (memq 'timestamp features))
-          ;; Else we will maybe retry with different timestamp formats.
-          (throw 'failed nil))))))
+            (throw 'success nil)))))))
+
+(defun logview--all-timestamp-formats ()
+  (unless logview--all-timestamp-formats-cache
+    (let ((start-time (float-time))
+          (patterns (make-hash-table :test 'equal :size 1000))
+          (uniques  (make-hash-table :test 'equal :size 1000)))
+      (dolist (locale (datetime-list-locales t))
+        (let ((decimal-separator (char-to-string (datetime-locale-field locale :decimal-separator)))
+              last-time-pattern)
+          (dolist (time-variant '(:short :medium :long :full))
+            (let ((time-pattern (datetime-locale-time-pattern locale time-variant)))
+              (unless (string= time-pattern last-time-pattern)
+                (setq last-time-pattern time-pattern)
+                (when (and (datetime-pattern-includes-second-p 'java time-pattern)
+                           (not (datetime-pattern-includes-timezone-p 'java time-pattern)))
+                  (let (variants)
+                    (dolist (pattern (cons time-pattern
+                                           (mapcar (lambda (date-variant) (datetime-locale-date-time-pattern locale date-variant time-variant))
+                                                   '(:short :medium :long :full))))
+                      (push pattern                                                                                   variants)
+                      (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSS")    pattern t) variants)
+                      (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSSSSS") pattern t) variants))
+                    (dolist (pattern variants)
+                      (let* ((parts            (datetime-recode-pattern 'java 'parsed pattern))
+                             (locale-dependent (datetime-pattern-locale-dependent-p 'parsed parts))
+                             (key              (cons pattern (when locale-dependent locale))))
+                        (when (or locale-dependent (null (gethash key patterns)))
+                          (puthash key
+                                   (datetime-matching-regexp 'parsed parts
+                                                             :second-fractional-extension t
+                                                             :locale locale
+                                                             :only-4-digit-years t
+                                                             :accept-leading-space t
+                                                             :require-leading-zeros t
+                                                             :forbid-unnecessary-zeros t)
+                                   patterns)))))))))))
+      (maphash (lambda (key regexp)
+                 (let ((existing (gethash regexp uniques)))
+                   (if existing
+                       (unless (memq (cdr key) (cdr existing))
+                         (push (cdr key) (cdr existing)))
+                     (puthash regexp (cons (car key) (list (cdr key))) uniques))))
+               patterns)
+      (setq logview--all-timestamp-formats-cache uniques)
+      (let ((inhibit-message t))
+        (message "Logview/datetime: built list of %d timestamp regexps in %.3f" (hash-table-count uniques) (- (float-time) start-time)))))
+  logview--all-timestamp-formats-cache)
 
 
 (defun logview--assert (&rest assertions)
