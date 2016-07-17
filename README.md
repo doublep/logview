@@ -23,8 +23,10 @@ UNIX files in `/var/log`.
 
 ### Installation
 
-Logview is available from [MELPA](http://melpa.org/#/logview).
-Assuming your `package-archives` lists MELPA, just type
+Logview is available from MELPA (both
+[stable](http://stable.melpa.org/#/logview) and
+[unstable](http://melpa.org/#/logview)).  Assuming your
+`package-archives` lists MELPA, just type
 
     M-x package-install RET logview RET
 
@@ -42,7 +44,7 @@ Now, from Emacs execute:
 
 Alternatively to the second step, add this to your `.emacs` file:
 
-    (add-to-list 'load-path "~/logview")
+    (add-to-list 'load-path "SOME-PATH/logview")
     (require 'logview)
 
 
