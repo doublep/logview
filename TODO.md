@@ -1,6 +1,7 @@
 ## Required for 1.0
 
-* Much improved submode guessing.
+* Much improved submode guessing.  This is partially done in 0.5 by
+  using 'datetime' library.
 
 * Views: named sets of filters that you can save and reuse later.
 
@@ -35,6 +36,10 @@
       18:11:03.038 [org.me.MyServer] processing request to 'Foo'
             +0.003 [org.me.SpecificServlet] initializing
             +0.004 [org.me.DatabaseUtils] querying the database: '...'
+
+* Add a command to find big gaps in timestamps.  Alternatively or in
+  addition to the requested jumping, it could also be used to define
+  sections.  See https://github.com/doublep/logview/issues/5
 
 * Maybe optionally highlight the current entry?  Though we already use
   background color heavily.

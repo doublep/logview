@@ -4,7 +4,7 @@
 
 ;; Author:     Paul Pogonyshev <pogonyshev@gmail.com>
 ;; Maintainer: Paul Pogonyshev <pogonyshev@gmail.com>
-;; Version:    0.4.2
+;; Version:    0.5
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
 ;; Package-Requires: ((emacs "24.1") (datetime "0.1"))
