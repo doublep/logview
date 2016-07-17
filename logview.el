@@ -1497,9 +1497,8 @@ returns non-nil."
             standard-timestamps)
         (logview--iterate-split-alists (lambda (_timestamp-name timestamp) (push timestamp standard-timestamps))
                                        logview-additional-timestamp-formats logview-std-timestamp-formats)
-        (maphash (lambda (regexp _keys)
-                   (push (list (cons 'regexp regexp)) standard-timestamps))
-                 (logview--all-timestamp-formats))
+        (dolist (regexp (logview--all-timestamp-formats))
+          (push (list (cons 'regexp regexp)) standard-timestamps))
         (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
           (logview--iterate-split-alists (lambda (name definition)
@@ -1516,22 +1515,20 @@ returns non-nil."
                                           (logview--get-split-alists name "timestamp format"
                                                                      logview-additional-timestamp-formats logview-std-timestamp-formats))
                                         timestamp-names)
-                              standard-timestamps)))
-    (unless (and (stringp format) (> (length format) 0))
-      (user-error "Invalid submode '%s': no format string" name))
-    (logview--try-initialize-submode name definition format timestamp-options test-line)))
-
-(defun logview--try-initialize-submode (name submode format timestamp-options test-line)
-  (let* ((search-from 0)
+                              standard-timestamps))
+         (search-from       0)
+         (parts             (list "^"))
          next
          end
          starter terminator
          levels
-         parts
          timestamp-at
+         cannot-match
          features
          (add-text-part (lambda (from to)
                           (push (replace-regexp-in-string "[ \t]+" "[ \t]+" (regexp-quote (substring format from to))) parts))))
+    (unless (and (stringp format) (> (length format) 0))
+      (user-error "Invalid submode '%s': no format string" name))
     (while (setq next (string-match logview--entry-part-regexp format search-from))
       (when (> next search-from)
         (funcall add-text-part search-from next))
@@ -1545,7 +1542,7 @@ returns non-nil."
              (push 'timestamp features)
              (setq timestamp-at parts))
             ((match-beginning logview--level-group)
-             (setq levels (logview--get-split-alists (cdr (assq 'levels submode)) "level mapping"
+             (setq levels (logview--get-split-alists (cdr (assq 'levels definition)) "level mapping"
                                                      logview-additional-level-mappings logview-std-level-mappings))
              (push (format "\\(?%d:%s\\)" logview--level-group
                            (regexp-opt (apply 'append (mapcar (lambda (final-level) (cdr (assq final-level levels)))
@@ -1563,7 +1560,7 @@ returns non-nil."
                                       ;; We allow _one_ level of nested parens inside
                                       ;; parenthesized THREAD or NAME.  Allowing more would
                                       ;; complicate regexp even further.  Unlimited nesting
-                                      ;; level is not possible will regexps at all.
+                                      ;; level is not possible with regexps at all.
                                       ;;
                                       ;; 'rx-to-string' is used to avoid escaping things
                                       ;; ourselves.
@@ -1586,40 +1583,45 @@ returns non-nil."
     (unless (string-match "[ \t]$" format)
       (push "[ \t]+" parts))
     (setq parts (nreverse parts))
-    (push "^" parts)
-    (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
-      (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
-             (timestamp-regexp  (if timestamp-pattern
-                                    (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
-                                           :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
-                                  (cdr (assq 'regexp timestamp-option)))))
-        (when timestamp-at
-          ;;(message "+++ %s" timestamp-regexp)
-          (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
-        (let ((regexp (apply #'concat parts)))
-          ;;(message "    %s :: %s" format (replace-regexp-in-string "\n" "" regexp))
-          (when (string-match regexp test-line)
-            (setq logview--process-buffer-changes t
-                  logview--entry-regexp           regexp
-                  logview--submode-features       features
-                  logview--submode-level-alist    nil
-                  mode-name                       (format "Logview/%s" name))
-            (when (memq 'level features)
-              (dolist (final-level logview--final-levels)
-                (dolist (level (cdr (assoc final-level levels)))
-                  (setq logview--submode-level-alist (cons (cons level final-level) logview--submode-level-alist))
-                  (push (cons level (list (make-symbol level)
-                                          (intern (format "logview-%s-entry" (symbol-name final-level)))
-                                          (intern (format "logview-level-%s" (symbol-name final-level)))))
-                        logview--submode-level-data))))
-            (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
-            (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
-            (read-only-mode 1)
-            (when buffer-file-name
-              (pcase logview-auto-revert-mode
-                (`auto-revert-mode      (auto-revert-mode      1))
-                (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
-            (throw 'success nil)))))))
+    (when timestamp-at
+      ;; Speed optimization: if the submode includes a timestamp, but
+      ;; the test line doesn't have even two digits at the expected
+      ;; place, don't even loop through all the timestamp options.
+      (setcar timestamp-at ".*[0-9][0-9].*")
+      (unless (string-match (apply #'concat parts) test-line)
+        (setq cannot-match t)))
+    (unless cannot-match
+      (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
+        (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
+               (timestamp-regexp  (if timestamp-pattern
+                                      (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
+                                             :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
+                                    (cdr (assq 'regexp timestamp-option)))))
+          (when timestamp-at
+            (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
+          (let ((regexp (apply #'concat parts)))
+            (when (string-match regexp test-line)
+              (setq logview--process-buffer-changes t
+                    logview--entry-regexp           regexp
+                    logview--submode-features       features
+                    logview--submode-level-alist    nil
+                    mode-name                       (format "Logview/%s" name))
+              (when (memq 'level features)
+                (dolist (final-level logview--final-levels)
+                  (dolist (level (cdr (assoc final-level levels)))
+                    (setq logview--submode-level-alist (cons (cons level final-level) logview--submode-level-alist))
+                    (push (cons level (list (make-symbol level)
+                                            (intern (format "logview-%s-entry" (symbol-name final-level)))
+                                            (intern (format "logview-level-%s" (symbol-name final-level)))))
+                          logview--submode-level-data))))
+              (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
+              (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
+              (read-only-mode 1)
+              (when buffer-file-name
+                (pcase logview-auto-revert-mode
+                  (`auto-revert-mode      (auto-revert-mode      1))
+                  (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
+              (throw 'success nil))))))))
 
 (defun logview--all-timestamp-formats ()
   (unless logview--all-timestamp-formats-cache
@@ -1648,13 +1650,7 @@ returns non-nil."
                              (key              (cons pattern (when locale-dependent locale))))
                         (when (or locale-dependent (null (gethash key patterns)))
                           (puthash key
-                                   (datetime-matching-regexp 'parsed parts
-                                                             :second-fractional-extension t
-                                                             :locale locale
-                                                             :only-4-digit-years t
-                                                             :accept-leading-space t
-                                                             :require-leading-zeros t
-                                                             :forbid-unnecessary-zeros t)
+                                   (apply #'datetime-matching-regexp 'parsed parts :locale locale logview--datetime-options)
                                    patterns)))))))))))
       (maphash (lambda (key regexp)
                  (let ((existing (gethash regexp uniques)))
@@ -1663,9 +1659,11 @@ returns non-nil."
                          (push (cdr key) (cdr existing)))
                      (puthash regexp (cons (car key) (list (cdr key))) uniques))))
                patterns)
-      (setq logview--all-timestamp-formats-cache uniques)
+      (maphash (lambda (regexp _key)
+                 (push regexp logview--all-timestamp-formats-cache))
+               uniques)
       (let ((inhibit-message t))
-        (message "Logview/datetime: built list of %d timestamp regexps in %.3f" (hash-table-count uniques) (- (float-time) start-time)))))
+        (message "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time)))))
   logview--all-timestamp-formats-cache)
 
 
