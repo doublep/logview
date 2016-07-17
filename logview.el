@@ -1209,9 +1209,10 @@ for how toggling works."
           (when (logview--match-current-entry)
             (forward-line)
             (let ((after-first-line (point))
-                  (end              (if (logview--match-successive-entries 1)
-                                        (match-beginning 0)
-                                      (point-max))))
+                  (end              (progn (backward-char)
+                                           (if (logview--match-successive-entries 1)
+                                               (match-beginning 0)
+                                             (point-max)))))
               (if (<= end after-first-line)
                   (user-error "Current entry has no details")
                 (logview--change-entry-details-visibility after-first-line end
