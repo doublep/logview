@@ -1,6 +1,7 @@
-<p><a href="http://www.gnu.org/licenses/gpl-3.0.txt"><img src="https://img.shields.io/badge/license-GPL_3-green.svg" alt="License GPL 3"/></a>
-<a href="http://stable.melpa.org/#/logview"><img src="http://stable.melpa.org/packages/logview-badge.svg" alt="MELPA Stable" title=""/></a>
-<a href="http://melpa.org/#/logview"><img src="http://melpa.org/packages/logview-badge.svg" alt="MELPA" title=""/></a></p>
+[![License: GPL 3](https://img.shields.io/badge/license-GPL_3-green.svg)](http://www.gnu.org/licenses/gpl-3.0.txt)
+[![GitHub release](https://img.shields.io/github/release/doublep/logview.svg?maxAge=86400)](https://github.com/doublep/logview/releases)
+[![MELPA Stable](http://stable.melpa.org/packages/logview-badge.svg)](http://stable.melpa.org/#/logview)
+[![MELPA](http://melpa.org/packages/logview-badge.svg)](http://melpa.org/#/logview)
 
 
 # Logview mode
