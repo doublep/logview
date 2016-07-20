@@ -449,7 +449,8 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 
 (defvar logview--all-timestamp-formats-cache nil)
 
-(defconst logview--valid-filter-prefixes '("a+" "a-" "t+" "t-" "m+" "m-"))
+(defconst logview--valid-text-filter-prefixes '("a+" "a-" "t+" "t-" "m+" "m-"))
+(defconst logview--valid-filter-prefixes      (append '("lv") logview--valid-text-filter-prefixes))
 
 
 (defvar-local logview--entry-regexp nil)
@@ -469,7 +470,7 @@ Levels are ordered least to most important.")
 (defvar-local logview--as-important-levels nil)
 (defvar-local logview--hide-all-details    nil)
 
-(defvar-local logview--current-filter-text nil)
+(defvar-local logview--current-filter-text "")
 
 ;; Currently a list of three items: matching function, inclusion and
 ;; exclusion regexps.
@@ -896,30 +897,30 @@ prefix means zero."
 (defun logview-show-only-errors ()
   "Show only error entries."
   (interactive)
-  (logview--set-min-level (logview--find-min-level 'error)))
+  (logview--change-min-level-filter (logview--find-min-level 'error)))
 
 (defun logview-show-errors-and-warnings ()
   "Show only error and warning entries."
   (interactive)
-  (logview--set-min-level (logview--find-min-level 'warning)))
+  (logview--change-min-level-filter (logview--find-min-level 'warning)))
 
 (defun logview-show-errors-warnings-and-information ()
   "Show error, warning and information entries."
   (interactive)
-  (logview--set-min-level (logview--find-min-level 'information)))
+  (logview--change-min-level-filter (logview--find-min-level 'information)))
 
 (defun logview-show-errors-warnings-information-and-debug ()
   "Show error, warning, information and debug entries.
 I.e. all entries other than traces."
   (interactive)
-  (logview--set-min-level (logview--find-min-level 'debug)))
+  (logview--change-min-level-filter (logview--find-min-level 'debug)))
 
 (defun logview-show-all-levels ()
   "Show entries of all levels.
 This doesn't cancel other filters that might be in effect
 though."
   (interactive)
-  (logview--set-min-level (logview--find-min-level 'trace)))
+  (logview--change-min-level-filter (logview--find-min-level 'trace)))
 
 (defun logview-show-only-as-important ()
   "Show entries 'as important' as the current.
@@ -932,7 +933,7 @@ hidden."
   (logview--assert 'level)
   (logview--std-matching
     (when (logview--match-current-entry)
-      (logview--set-min-level (match-string logview--level-group)))))
+      (logview--change-min-level-filter (match-string logview--level-group)))))
 
 (defun logview--find-min-level (final-level)
   "Find minimal submode level that maps to given FINAL-LEVEL or higher."
@@ -944,9 +945,29 @@ hidden."
         (setq result (car level-pair))))
     result))
 
+(defun logview--change-min-level-filter (min-level)
+  (when (and min-level (string= min-level (caar logview--submode-level-alist)))
+    (setq min-level nil))
+  (let ((case-fold-search nil))
+    (let* ((level-filter-at       (string-match "^lv .*$" logview--current-filter-text))
+           (level-filter-line-end (match-end 0)))
+      (if level-filter-at
+          (setq logview--current-filter-text
+                (concat (substring logview--current-filter-text 0 level-filter-at)
+                        (substring logview--current-filter-text
+                                   (or (string-match "^" logview--current-filter-text level-filter-line-end)
+                                       level-filter-line-end))))
+        (setq level-filter-at 0))
+      (when min-level
+        (setq logview--current-filter-text (concat (substring logview--current-filter-text 0 level-filter-at)
+                                                   "lv " min-level
+                                                   (substring logview--current-filter-text level-filter-at))))))
+  (logview--parse-filters))
+
 (defun logview--set-min-level (min-level)
-  (setq logview--min-shown-level min-level)
-  (logview--update-invisibility-spec))
+  (unless (string= logview--min-shown-level min-level)
+    (setq logview--min-shown-level min-level)
+    (logview--update-invisibility-spec)))
 
 
 
@@ -1100,7 +1121,7 @@ entries and cancel any narrowing restrictions."
     (when also-show-details
       (logview--update-invisibility-spec)))
   (when (or (memq 'name logview--submode-features) (memq 'thread logview--submode-features) also-cancel-explicit-hiding)
-    (logview--parse-filters logview--valid-filter-prefixes)
+    (logview--parse-filters logview--valid-text-filter-prefixes)
     (logview--apply-parsed-filters also-cancel-explicit-hiding)))
 
 
@@ -1831,6 +1852,7 @@ See `logview--iterate-entries-forward' for details."
   ;; As we "leave" current buffer, we need to rebind variables
   ;; locally, so their values are properly transferred.
   (let ((filters logview--current-filter-text)
+        min-shown-level
         non-discarded-lines
         include-name-regexps
         exclude-name-regexps
@@ -1838,7 +1860,7 @@ See `logview--iterate-entries-forward' for details."
         exclude-thread-regexps
         include-message-regexps
         exclude-message-regexps)
-    (when filters
+    (when (> (length filters) 0)
       (with-temp-buffer
         (insert filters)
         (goto-char 1)
@@ -1851,16 +1873,19 @@ See `logview--iterate-entries-forward' for details."
              (when (not (and filter-line reset-this-filter))
                (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
              (when (and filter-line (not reset-this-filter))
-               (let ((regexp (logview--filter-regexp begin end)))
-                 (when (logview--valid-regexp-p regexp)
-                   (pcase type
-                     ("a+" (push regexp include-name-regexps))
-                     ("a-" (push regexp exclude-name-regexps))
-                     ("t+" (push regexp include-thread-regexps))
-                     ("t-" (push regexp exclude-thread-regexps))
-                     ("m+" (push regexp include-message-regexps))
-                     ("m-" (push regexp exclude-message-regexps))))))
+               (if (string= type "lv")
+                   (setq min-shown-level (buffer-substring-no-properties begin end))
+                 (let ((regexp (logview--filter-regexp begin end)))
+                   (when (logview--valid-regexp-p regexp)
+                     (pcase type
+                       ("a+" (push regexp include-name-regexps))
+                       ("a-" (push regexp exclude-name-regexps))
+                       ("t+" (push regexp include-thread-regexps))
+                       ("t-" (push regexp exclude-thread-regexps))
+                       ("m+" (push regexp include-message-regexps))
+                       ("m-" (push regexp exclude-message-regexps)))))))
              t))))
+      (logview--set-min-level min-shown-level)
       (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
             logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
             logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
@@ -1872,8 +1897,8 @@ Buffer must be positioned at the start of a line.  Iteration
 continues until CALLBACK returns nil or end of buffer is reached.
 
 CALLBACK is called with four arguments: TYPE, LINE-BEGIN, BEGIN,
-and END.  TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\" or
-\"m-\" for valid filter types, \"#\" for comment line and \"\" for an
+and END.  TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\", \"m-\"
+or \"lv\" for valid filter types, \"#\" for comment line and \"\" for an
 empty line, or nil to indicate an erroneous line.  BEGIN and END
 determine filter text boundaries (may span several lines for
 message filters.  LINE-BEGIN is the beginnig of the line where
@@ -1888,7 +1913,7 @@ which is usually one line beyond END."
                 (progn
                   (setq line-begin (point)
                         begin      line-begin
-                        type       (when (looking-at "\\([atm][-+]\\) \\|\\s-*\\(#\\)\\|\\s-*$")
+                        type       (when (looking-at "\\(lv\\|[atm][-+]\\) \\|\\s-*\\(#\\)\\|\\s-*$")
                                      (if (match-beginning 1)
                                          (progn (setq begin (match-end 0))
                                                 (match-string 1))
@@ -2196,13 +2221,23 @@ Optional third argument is to make the function suitable for
                       (looking-at "\.\. "))
             (forward-line -1))
           (logview--iterate-filter-lines
-           (lambda (type _line-begin begin end)
+           (lambda (type line-begin begin end)
              (cond ((null type)
                     (put-text-property begin end 'face 'error))
                    ((string= type "#")
                     (put-text-property begin end 'face 'font-lock-comment-face))
                    ((string= type "")
                     (put-text-property begin end 'face nil))
+                   ((string= type "lv")
+                    (put-text-property line-begin begin 'face 'logview-edit-filters-type-prefix)
+                    (let ((level-string (buffer-substring-no-properties begin end))
+                          (known-levels (with-current-buffer logview-filter-edit--parent-buffer
+                                          logview--submode-level-alist)))
+                      (while (and level-string known-levels)
+                        (if (string= (caar known-levels) level-string)
+                            (setq level-string nil)
+                          (setq known-levels (cdr known-levels))))
+                      (put-text-property begin end 'face (if level-string 'error nil))))
                    (t
                     (let* ((valid (logview--valid-regexp-p (logview--filter-regexp begin end))))
                       (goto-char begin)
