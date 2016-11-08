@@ -1884,12 +1884,12 @@ See `logview--iterate-entries-forward' for details."
                        ("t-" (push regexp exclude-thread-regexps))
                        ("m+" (push regexp include-message-regexps))
                        ("m-" (push regexp exclude-message-regexps)))))))
-             t))))
-      (logview--set-min-level min-shown-level)
-      (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
-            logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
-            logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
-            logview--message-filter      (logview--build-filter include-message-regexps exclude-message-regexps)))))
+             t)))))
+    (logview--set-min-level min-shown-level)
+    (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
+          logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
+          logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
+          logview--message-filter      (logview--build-filter include-message-regexps exclude-message-regexps))))
 
 (defun logview--iterate-filter-lines (callback)
   "Find successive filter specification in the current buffer.
