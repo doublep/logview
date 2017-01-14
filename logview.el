@@ -960,7 +960,7 @@ hidden."
         (setq level-filter-at 0))
       (when min-level
         (setq logview--current-filter-text (concat (substring logview--current-filter-text 0 level-filter-at)
-                                                   "lv " min-level
+                                                   "lv " min-level "\n"
                                                    (substring logview--current-filter-text level-filter-at))))))
   (logview--parse-filters))
 
@@ -1870,7 +1870,7 @@ See `logview--iterate-entries-forward' for details."
                  (reset-this-filter (member type to-reset)))
              (when reset-this-filter
                (delete-region begin (point)))
-             (when (not (and filter-line reset-this-filter))
+             (when (and (not (and filter-line reset-this-filter)) (or non-discarded-lines (not (string= type ""))))
                (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
              (when (and filter-line (not reset-this-filter))
                (if (string= type "lv")
