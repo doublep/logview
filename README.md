@@ -201,7 +201,7 @@ standard Emacs features.
 Lines beginning with ‘#’ character are comments.  They and empty lines
 are ignored.  Lines for actual filters must start with certain prefix:
 ‘a+ ’ (note the single trailing space!) for name inclusion filters,
-‘a- ’ for name inclusion, and similart ‘t+ ’, ‘t- ’, ‘m+ ’, ‘m- ’ for
+‘a- ’ for name exclusion, and similart ‘t+ ’, ‘t- ’, ‘m+ ’, ‘m- ’ for
 thread and message filters.  Additionally, multiline message filters
 must use ‘.. ’ prefix (two dots and a space) for continuation lines.
 The buffer mode has some syntax highlighting support, so you should
