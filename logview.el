@@ -1615,34 +1615,41 @@ returns non-nil."
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
         (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
                (timestamp-regexp  (if timestamp-pattern
-                                      (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
-                                             :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
+                                      (condition-case error
+                                          (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
+                                                 :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
+                                        ;; 'datetime' doesn't mention the erroneous pattern to keep
+                                        ;; the error message concise.  Let's do it ourselves.
+                                        (error (warn "In Java timestamp pattern '%s': %s"
+                                                     (cdr timestamp-pattern) (error-message-string error))
+                                               nil))
                                     (cdr (assq 'regexp timestamp-option)))))
-          (when timestamp-at
-            (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
-          (let ((regexp (apply #'concat parts)))
-            (when (string-match regexp test-line)
-              (setq logview--process-buffer-changes t
-                    logview--entry-regexp           regexp
-                    logview--submode-features       features
-                    logview--submode-level-alist    nil
-                    mode-name                       (format "Logview/%s" name))
-              (when (memq 'level features)
-                (dolist (final-level logview--final-levels)
-                  (dolist (level (cdr (assoc final-level levels)))
-                    (setq logview--submode-level-alist (cons (cons level final-level) logview--submode-level-alist))
-                    (push (cons level (list (make-symbol level)
-                                            (intern (format "logview-%s-entry" (symbol-name final-level)))
-                                            (intern (format "logview-level-%s" (symbol-name final-level)))))
-                          logview--submode-level-data))))
-              (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
-              (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
-              (read-only-mode 1)
-              (when buffer-file-name
-                (pcase logview-auto-revert-mode
-                  (`auto-revert-mode      (auto-revert-mode      1))
-                  (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
-              (throw 'success nil))))))))
+          (when (or timestamp-regexp (null timestamp-at))
+            (when timestamp-at
+              (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
+            (let ((regexp (apply #'concat parts)))
+              (when (string-match regexp test-line)
+                (setq logview--process-buffer-changes t
+                      logview--entry-regexp           regexp
+                      logview--submode-features       features
+                      logview--submode-level-alist    nil
+                      mode-name                       (format "Logview/%s" name))
+                (when (memq 'level features)
+                  (dolist (final-level logview--final-levels)
+                    (dolist (level (cdr (assoc final-level levels)))
+                      (setq logview--submode-level-alist (cons (cons level final-level) logview--submode-level-alist))
+                      (push (cons level (list (make-symbol level)
+                                              (intern (format "logview-%s-entry" (symbol-name final-level)))
+                                              (intern (format "logview-level-%s" (symbol-name final-level)))))
+                            logview--submode-level-data))))
+                (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
+                (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
+                (read-only-mode 1)
+                (when buffer-file-name
+                  (pcase logview-auto-revert-mode
+                    (`auto-revert-mode      (auto-revert-mode      1))
+                    (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
+                (throw 'success nil)))))))))
 
 (defun logview--all-timestamp-formats ()
   (unless logview--all-timestamp-formats-cache
