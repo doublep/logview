@@ -160,6 +160,10 @@ format
 
         TIMESTAMP [THREAD] LEVEL NAME -
 
+    Additionally, you can use special placeholder \"IGNORED\" if
+    needed.  Usecase for it are log files that contain too many
+    fields to map to the ones Logview supports natively.
+
 levels  [may be optional]
 
     Level mapping (see `logview-additional-level-mappings') used
@@ -432,14 +436,16 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 (defconst logview--level-group     2)
 (defconst logview--name-group      3)
 (defconst logview--thread-group    4)
+(defconst logview--ignored-group   5)
 
 (defconst logview--final-levels '(error warning information debug trace))
 
-(defconst logview--entry-parts '("TIMESTAMP" "LEVEL" "NAME" "THREAD"))
-(defconst logview--entry-part-regexp (rx (or (group bow "TIMESTAMP" eow)
-                                             (group bow "LEVEL" eow)
-                                             (group bow "NAME" eow)
-                                             (group bow "THREAD" eow))))
+(defconst logview--entry-part-regexp (rx bow (or (group "TIMESTAMP")
+                                                 (group "LEVEL")
+                                                 (group "NAME")
+                                                 (group "THREAD")
+                                                 (group "IGNORED"))
+                                         eow))
 
 (defvar logview--datetime-options '(:second-fractional-extension t
                                     :only-4-digit-years t
@@ -1571,9 +1577,12 @@ returns non-nil."
                    parts)
              (push 'level features))
             (t
-             (dolist (k (list logview--name-group logview--thread-group))
+             (dolist (k (list logview--name-group logview--thread-group logview--ignored-group))
                (when (match-beginning k)
-                 (push (format "\\(?%d:%s\\)" k
+                 (push (format "\\(?%s:%s\\)"
+                               (if (/= k logview--ignored-group)
+                                   (number-to-string k)
+                                 "")
                                (cond ((and starter terminator
                                            (or (and (= starter ?\() (= terminator ?\)))
                                                (and (= starter ?\[) (= terminator ?\]))))
