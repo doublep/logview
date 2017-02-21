@@ -130,6 +130,17 @@ See [more detailed description below](#filters-explained).
 * Reset all filters: `R`
 * Reset all filters, widen and show all explicitly hidden entries: `r e`
 
+#### Views
+
+See [more detailed description below](#views-explained).
+
+* Switch to a view: `v`
+* Save the current filters as a view for this submode: `V s`
+* Save the current filters as a global view: `V S`
+* Edit submode views: `V e` (pops up a separate buffer)
+* Edit all views: `V E` (pops up a separate buffer)
+* Delete a view by name: `V d`
+
 #### Explicitly hide or show individual entries
 
 * Hide one entry: `h`
@@ -218,7 +229,7 @@ variable `case-fold-search`.
 Filters are matched against relevant entry parts as strings, not
 against the whole buffer.  Therefore, you can use `^` and `$` special
 characters for the expected meaning.  For example, adding `^org` as
-name exclusion filter will hide all entries where logger name _begins_
+name exclusion filter will hide all entries where logger name begins
 with string ‘org’.
 
 Unlike name and thread filters, message filters can span multiple
@@ -230,3 +241,42 @@ Commands `a`, `A`, `t` and `T` default to the name (or thread) of the
 current entry.  You can also use `C-p` (`<up>`) to browse history of
 previously entered values and `C-n` (`<down>`) for a few default
 values.
+
+
+### Views<a id="views-explained"></a>
+
+Views are named sets of filters that you can activate quickly.  They
+are especially useful if you use name or message filters a lot, and
+often find yourself typing in the same filters over and over again.
+
+The easiest way to define a view is by first adding all the filters
+you need.  This way you can see in the buffer if the filtering result
+matches what you expect.  After you are satisfied, type `V s` and a
+name for the new view.  Notice that the mode line now displays name of
+the view in square brackets after the submode name, e.g.:
+
+    Logview/SLF4J [useful-view-1]
+
+Now type `R` to reset all the filters.  All previously hidden entries
+will be shown again and the view name disappear from the mode line.
+However, to restore the filters now you don’t have to re-create them
+one-by-one.  Simply type `v` and whatever name you used when saving
+your first view.  You can also use text completion to pick among all
+the defined views.
+
+Remember that further filtering doesn’t affect view definition.  If
+you want to change a view, save filters as a view with the same name
+again, and confirm that you do want to replace the previous
+definition.  Alternative way is to edit views using `V e`.  This pops
+up a separate buffer just like `f` command does, but instead of
+filters you will edit all defined views for the current submode at
+once.  This way you can change existing definitions, delete unneeded
+or add more.  Commands like `V s` or `V d` (delete a view by name) can
+be seen as just a convenience.
+
+Views come in two kinds: globally accessible and bound to a specific
+submode.  This distinction is important if you use logs of different
+kinds.  Most often you need submode-specific views, because text
+filters usually can’t be meaningfully applied without changes to
+different programs.  When you use `v` command, only the views for the
+current submode plus any global views are available for selection.

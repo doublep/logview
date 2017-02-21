@@ -337,6 +337,11 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
   :group 'logview
   :type  'boolean)
 
+(defcustom logview-views-file (locate-user-emacs-file "logview.views")
+  "Simple text file in which defined views are stored."
+  :group 'logview
+  :type  'file)
+
 
 (defgroup logview-faces nil
   "Faces for Logview mode."
@@ -459,6 +464,7 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 (defconst logview--valid-filter-prefixes      (append '("lv") logview--valid-text-filter-prefixes))
 
 
+(defvar-local logview--submode-name nil)
 (defvar-local logview--entry-regexp nil)
 (defvar-local logview--submode-features nil)
 
@@ -493,15 +499,31 @@ Levels are ordered least to most important.")
 
 (defvar-local logview--process-buffer-changes nil)
 
+(defvar logview--views             nil)
+(defvar logview--views-initialized nil)
+(defvar logview--views-need-saving nil)
+
+(defvar logview--view-name-history)
+
 (defvar-local logview--filter-editing-buffer nil)
+(defvar logview--view-editing-buffer         nil)
 
 
-(defvar-local logview-filter-edit--parent-buffer nil)
-(defvar-local logview-filter-edit--window-configuration nil)
+(defvar-local logview-filter-edit--parent-buffer             nil)
+(defvar-local logview-filter-edit--window-configuration      nil)
+(defvar-local logview-filter-edit--editing-views             nil)
+(defvar-local logview-filter-edit--editing-views-for-submode nil)
 
-(defvar logview-filter-edit--hint-comment
+(defvar logview-filter-edit--filters-hint-comment
   "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
 ")
+
+(defvar logview-filter-edit--views-hint-comment
+  "# Press C-c C-c to save edited views, C-c C-k to quit without saving.
+")
+
+(defconst logview--view-header-regexp  (rx bol (group "view")    " " (group (1+ nonl)) eol))
+(defconst logview--view-submode-regexp (rx bol (group "submode") " " (group (1+ nonl)) eol))
 
 
 (defvar logview--cheat-sheet
@@ -521,7 +543,7 @@ Levels are ordered least to most important.")
      (logview-show-errors-warnings-and-information                           "Show errors, warnings and information")
      (logview-show-errors-warnings-information-and-debug                     "Show all levels except trace")
      (logview-show-all-levels                                                "Show entries of all levels")
-     (logview-show-only-as-important                                         "Show entries ‘as important’ as current one"))
+     (logview-show-only-as-important                                         "Show entries ‘as important’ as the current one"))
     ("Text-based filtering"
      (logview-edit-filters                                                   "Edit filters as text in a separate buffer")
      (logview-add-include-name-filter    logview-add-exclude-name-filter     "Add name include / exclude filter")
@@ -534,13 +556,20 @@ Levels are ordered least to most important.")
      (logview-reset-message-filters                                          "Reset message filters")
      (logview-reset-all-filters                                              "Reset all filters")
      (logview-reset-all-filters-restrictions-and-hidings                     "Reset filters, widen and show explicitly hidden entries"))
+    ("Views"
+     (logview-switch-to-view                                                 "Switch to a view")
+     (logview-save-filters-as-view-for-submode                               "Save the filters as a view for the current submode")
+     (logview-save-filters-as-global-view                                    "Save the filters as a globally available view")
+     (logview-edit-submode-views                                             "Edit views for the current submode")
+     (logview-edit-all-views                                                 "Edit all views")
+     (logview-delete-view                                                    "Delete a view"))
     ("Explicitly hide or show entries"
      (logview-hide-entry                                                     "Hide entry")
      (logview-hide-region-entries                                            "Hide entries in the region")
      (logview-show-entries                                                   "Show some explicitly hidden entries")
      (logview-show-region-entries                                            "Show explicitly hidden entries in the region"))
     ("Hide or show details of individual entries"
-     (logview-toggle-entry-details                                           "Toggle details of current entry")
+     (logview-toggle-entry-details                                           "Toggle details of the current entry")
      (logview-toggle-region-entry-details                                    "Toggle details of entries in the region")
      (logview-toggle-details-globally                                        "Toggle details in the whole buffer")
      "Here ‘details’ are the message lines after the first.")
@@ -652,6 +681,13 @@ that the line is not the first in the buffer."
                        ("r m" logview-reset-message-filters)
                        ("R"   logview-reset-all-filters)
                        ("r e" logview-reset-all-filters-restrictions-and-hidings)
+                       ;; View commands.
+                       ("v"   logview-switch-to-view)
+                       ("V s" logview-save-filters-as-view-for-submode)
+                       ("V S" logview-save-filters-as-global-view)
+                       ("V e" logview-edit-submode-views)
+                       ("V E" logview-edit-all-views)
+                       ("V d" logview-delete-view)
                        ;; Explicit entry hiding/showing commands.
                        ("h"   logview-hide-entry)
                        ("H"   logview-hide-region-entries)
@@ -980,6 +1016,7 @@ hidden."
 ;;; Filtering by name/thread commands.
 
 (defun logview-edit-filters ()
+  "Edit the current filters in a separate buffer."
   (interactive)
   (let ((self    (current-buffer))
         (windows (current-window-configuration))
@@ -992,7 +1029,8 @@ hidden."
     (unless (eq major-mode 'logview-filter-edit-mode)
       (logview-filter-edit-mode))
     (setq logview-filter-edit--parent-buffer        self
-          logview-filter-edit--window-configuration windows)
+          logview-filter-edit--window-configuration windows
+          logview-filter-edit--editing-views        nil)
     (logview-filter-edit--initialize-text filters)))
 
 (defun logview-add-include-name-filter ()
@@ -1129,6 +1167,121 @@ entries and cancel any narrowing restrictions."
   (when (or (memq 'name logview--submode-features) (memq 'thread logview--submode-features) also-cancel-explicit-hiding)
     (logview--parse-filters logview--valid-text-filter-prefixes)
     (logview--apply-parsed-filters also-cancel-explicit-hiding)))
+
+
+
+;;; View commands.
+
+(defun logview-switch-to-view (view)
+  "Switch to a previously defined view.
+Interactively, read the view name from the minibuffer."
+  (interactive (logview--choose-view "Switch to view: "))
+  (setq logview--current-filter-text (plist-get view :filters))
+  (logview--parse-filters)
+  (logview--apply-parsed-filters))
+
+(defun logview-save-filters-as-view-for-submode (name)
+  "Save the current filter set as a view for the current submode.
+Interactively, read the name for the new view from the
+minibuffer."
+  (interactive (list nil))
+  (logview--do-save-filters-as-view name nil))
+
+(defun logview-save-filters-as-global-view (name)
+  "Save the current filter set as a global view.
+Interactively, read the name for the new view from the
+minibuffer."
+  (interactive (list nil))
+  (logview--do-save-filters-as-view name t))
+
+(defun logview-edit-submode-views ()
+  "Edit views for the current submode in a separate buffer."
+  (interactive)
+  (logview--do-edit-views t))
+
+(defun logview-edit-all-views ()
+  "Edit all views in a separate buffer."
+  (interactive)
+  (logview--do-edit-views nil))
+
+(defun logview-delete-view (view)
+  "Delete a view definition.
+Interactively, read the view name from the minibuffer."
+  (interactive (logview--choose-view "Delete view: "))
+  (setq logview--views             (delq view (logview--views))
+        logview--views-need-saving t)
+  (logview--update-mode-name))
+
+(defun logview--choose-view (prompt)
+  (let (defined-names)
+    (dolist (view (logview--views))
+      (when (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+        (push (plist-get view :name) defined-names)))
+    (unless defined-names
+      (user-error "There are no views defined for the current submode"))
+    (let ((name      (logview--completing-read prompt defined-names nil t nil 'logview--view-name-history))
+          (all-views (logview--views))
+          view)
+      (while all-views
+        (let ((candidate (pop all-views)))
+          (when (and (string= (plist-get candidate :name) name)
+                     (or (null (plist-get candidate :submode)) (string= (plist-get candidate :submode) logview--submode-name)))
+            (setq view      candidate
+                  all-views nil))))
+      (list view))))
+
+(defun logview--do-save-filters-as-view (name global)
+  (unless (or logview--min-shown-level (car logview--name-filter) (car logview--thread-filter) (car logview--message-filter))
+    (user-error "There are currently no filters"))
+  (unless name
+    (setq name (read-string "Name: " nil 'logview--view-name-history)))
+  (when (= (length name) 0)
+    (user-error "View name may not be empty"))
+  (let ((matches (lambda (view)
+                   (and (string= (plist-get view :name) name)
+                        (or global (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))))))
+    (dolist (view (logview--views))
+      (when (funcall matches view)
+        (unless (y-or-n-p (format-message (if global
+                                              "There is already a view named `%s'. Replace it?"
+                                            "There is already a view named `%s' for this submode. Replace it?")
+                                          name))
+          (user-error "View named `%s' already exists; try a different name" name))))
+    (let (new-views)
+      (dolist (view (logview--views))
+        (unless (funcall matches view)
+          (push view new-views)))
+      (push (list :name name :filters logview--current-filter-text) new-views)
+      (unless global
+        (plist-put (car new-views) :submode logview--submode-name))
+      (setq logview--views             (nreverse new-views)
+            logview--views-need-saving t)
+      (logview--update-mode-name)
+      (message (if global "Saved filters as a global view named `%s'" "Saved filters as a submode view named `%s'") name))))
+
+(defun logview--do-edit-views (submode-only)
+  (let ((self    (current-buffer))
+        (windows (current-window-configuration))
+        (submode (when submode-only logview--submode-name)))
+    (if (buffer-live-p logview--view-editing-buffer)
+        (when (and (buffer-modified-p logview--view-editing-buffer)
+                   (not (eq (with-current-buffer logview--view-editing-buffer
+                              logview-filter-edit--editing-views-for-submode)
+                            submode)))
+          (pop-to-buffer logview--view-editing-buffer)
+          (unless (yes-or-no-p "Discard current view editing changes?")
+            (user-error "Another view editing is in progress")))
+      (setq logview--view-editing-buffer (generate-new-buffer "Logview views")))
+    (split-window-vertically)
+    (other-window 1)
+    (switch-to-buffer logview--view-editing-buffer)
+    (unless (eq major-mode 'logview-filter-edit-mode)
+      (logview-filter-edit-mode))
+    (setq logview-filter-edit--parent-buffer             self
+          logview-filter-edit--window-configuration      windows
+          logview-filter-edit--editing-views             t
+          logview-filter-edit--editing-views-for-submode submode)
+    (logview-filter-edit--initialize-text)))
 
 
 
@@ -1287,6 +1440,9 @@ well."
 
 
 (defun logview-toggle-details-globally (&optional arg)
+  "Toggle whether details are shown in the whole buffer.
+If invoked with prefix argument, show details if the argument is
+positive, hide otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--toggle-option-locally 'logview--hide-all-details arg (called-interactively-p 'interactive)
                                   "All entry messages details are now hidden"
@@ -1299,7 +1455,6 @@ well."
 
 (defun logview-toggle-copy-visible-text-only (&optional arg)
   "Toggle `logview-copy-visible-text-only' just for this buffer.
-
 If invoked with prefix argument, enable the option if the
 argument is positive, disable it otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
@@ -1309,7 +1464,6 @@ argument is positive, disable it otherwise."
 
 (defun logview-toggle-search-only-in-messages (&optional arg)
   "Toggle `logview-search-only-in-messages' just for this buffer.
-
 If invoked with prefix argument, enable the option if the
 argument is positive, disable it otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
@@ -1319,7 +1473,6 @@ argument is positive, disable it otherwise."
 
 (defun logview-toggle-show-ellipses (&optional arg)
   "Toggle `logview-show-ellipses' just for this buffer.
-
 If invoked with prefix argument, enable the option if the
 argument is positive, disable it otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
@@ -1638,11 +1791,12 @@ returns non-nil."
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
             (let ((regexp (apply #'concat parts)))
               (when (string-match regexp test-line)
-                (setq logview--process-buffer-changes t
+                (setq logview--submode-name           name
+                      logview--process-buffer-changes t
                       logview--entry-regexp           regexp
                       logview--submode-features       features
-                      logview--submode-level-alist    nil
-                      mode-name                       (format "Logview/%s" name))
+                      logview--submode-level-alist    nil)
+                (logview--update-mode-name)
                 (when (memq 'level features)
                   (dolist (final-level logview--final-levels)
                     (dolist (level (cdr (assoc final-level levels)))
@@ -1841,6 +1995,21 @@ See `logview--iterate-entries-forward' for details."
                                       only-visible validator)))
 
 
+(defun logview--update-mode-name ()
+  (let ((view-name (catch 'found
+                     (dolist (view (logview--views))
+                       (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+                                  (string= (plist-get view :filters) logview--current-filter-text))
+                         (throw 'found (plist-get view :name))))
+                     (let ((canonical-filter-text (logview--canonical-filter-text logview--current-filter-text)))
+                       (dolist (view (logview--views))
+                         (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+                                    (string= (logview--canonical-filter-text (plist-get view :filters)) canonical-filter-text))
+                           (throw 'found (plist-get view :name))))))))
+    (setq mode-name (if view-name
+                        (format "Logview/%s [%s]" logview--submode-name view-name)
+                      (format "Logview/%s" logview--submode-name)))))
+
 (defun logview--update-invisibility-spec ()
   (let ((invisibility-spec '(logview-filtered logview-hidden-entry logview-hidden-details))
         (found nil))
@@ -1877,37 +2046,44 @@ See `logview--iterate-entries-forward' for details."
         include-message-regexps
         exclude-message-regexps)
     (when (> (length filters) 0)
-      (with-temp-buffer
-        (insert filters)
-        (goto-char 1)
-        (logview--iterate-filter-lines
-         (lambda (type line-begin begin end)
-           (let ((filter-line       (not (member type '("#" "" nil))))
-                 (reset-this-filter (member type to-reset)))
-             (when reset-this-filter
-               (delete-region begin (point)))
-             (when (and (not (and filter-line reset-this-filter)) (or non-discarded-lines (not (string= type ""))))
-               (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
-             (when (and filter-line (not reset-this-filter))
-               (if (string= type "lv")
-                   (setq min-shown-level (buffer-substring-no-properties begin end))
-                 (let ((regexp (logview--filter-regexp begin end)))
-                   (when (logview--valid-regexp-p regexp)
-                     (pcase type
-                       ("a+" (push regexp include-name-regexps))
-                       ("a-" (push regexp exclude-name-regexps))
-                       ("t+" (push regexp include-thread-regexps))
-                       ("t-" (push regexp exclude-thread-regexps))
-                       ("m+" (push regexp include-message-regexps))
-                       ("m-" (push regexp exclude-message-regexps)))))))
-             t)))))
+      (logview--iterate-filter-text-lines
+       filters
+       (lambda (type line-begin begin end)
+         (let ((filter-line       (not (member type '("#" "" nil))))
+               (reset-this-filter (member type to-reset)))
+           (when reset-this-filter
+             (delete-region begin (point)))
+           (when (and (not (and filter-line reset-this-filter)) (or non-discarded-lines (not (equal type ""))))
+             (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
+           (when (and filter-line (not reset-this-filter))
+             (if (string= type "lv")
+                 (setq min-shown-level (buffer-substring-no-properties begin end))
+               (let ((regexp (logview--filter-regexp begin end)))
+                 (when (logview--valid-regexp-p regexp)
+                   (pcase type
+                     ("a+" (push regexp include-name-regexps))
+                     ("a-" (push regexp exclude-name-regexps))
+                     ("t+" (push regexp include-thread-regexps))
+                     ("t-" (push regexp exclude-thread-regexps))
+                     ("m+" (push regexp include-message-regexps))
+                     ("m-" (push regexp exclude-message-regexps)))))))
+           t))))
     (logview--set-min-level min-shown-level)
     (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
           logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
           logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
-          logview--message-filter      (logview--build-filter include-message-regexps exclude-message-regexps))))
+          logview--message-filter      (logview--build-filter include-message-regexps exclude-message-regexps))
+    (logview--update-mode-name)))
 
-(defun logview--iterate-filter-lines (callback)
+(defun logview--iterate-filter-text-lines (filters callback)
+  (with-temp-buffer
+    (insert filters)
+    (unless (bolp)
+      (insert "\n"))
+    (goto-char 1)
+    (logview--iterate-filter-buffer-lines callback)))
+
+(defun logview--iterate-filter-buffer-lines (callback)
   "Find successive filter specification in the current buffer.
 Buffer must be positioned at the start of a line.  Iteration
 continues until CALLBACK returns nil or end of buffer is reached.
@@ -1918,7 +2094,7 @@ or \"lv\" for valid filter types, \"#\" for comment line and \"\" for an
 empty line, or nil to indicate an erroneous line.  BEGIN and END
 determine filter text boundaries (may span several lines for
 message filters.  LINE-BEGIN is the beginnig of the line where
-the entry starts; in case of filters this is a few charaters
+the entry starts; in case of filters this is a few characters
 before BEGIN.  Point is positioned at the start of next line,
 which is usually one line beyond END."
   (let ((case-fold-search nil)
@@ -1939,6 +2115,14 @@ which is usually one line beyond END."
                     (while (looking-at "\\.\\. ")
                       (forward-line)))
                   (funcall callback type line-begin begin (if (bolp) (logview--linefeed-back-checked (point)) (point))))))))
+
+(defun logview--canonical-filter-text (filters)
+  (let (filter-lines)
+    (logview--iterate-filter-text-lines filters
+                                        (lambda (type line-begin _begin end)
+                                          (unless (member type '(nil "" "#"))
+                                            (push (buffer-substring-no-properties line-begin (1+ end)) filter-lines))))
+    (apply #'concat (sort filter-lines #'string<))))
 
 (defun logview--build-filter (include-regexp-list exclude-regexp-list)
   (let ((include-regexp (logview--build-filter-regexp include-regexp-list))
@@ -2128,6 +2312,72 @@ which is usually one line beyond END."
            alists)
     (user-error "Unknown %s '%s'" type key)))
 
+(defun logview--views ()
+  "Return the list of all defined views.
+Each element is a plist with properties :name, :filters and
+:submode.  More properties might be defined later.
+
+This list is preserved across Emacs session in
+`logview-views-file'."
+  (unless logview--views-initialized
+    (with-temp-buffer
+      (insert-file-contents logview-views-file)
+      (setq logview--views             (logview--parse-view-definitions)
+            logview--views-initialized t)))
+  logview--views)
+
+(defun logview--parse-view-definitions (&optional warn-about-garbage)
+  (catch 'done
+    (let (views
+          pending-name
+          pending-submode
+          filters-from)
+      (while t
+        (if (or (eobp) (looking-at logview--view-header-regexp))
+            (progn (when pending-name
+                     (save-excursion
+                       (skip-syntax-backward "-" filters-from)
+                       (push (list :name pending-name
+                                   :submode pending-submode
+                                   :filters (buffer-substring-no-properties filters-from (point)))
+                             views)))
+                   (when (eobp)
+                     (throw 'done (nreverse views)))
+                   (setq pending-name (match-string-no-properties 2))
+                   (forward-line)
+                   (if (looking-at logview--view-submode-regexp)
+                       (progn (setq pending-submode (match-string-no-properties 2))
+                              (forward-line))
+                     (setq pending-submode nil))
+                   (setq filters-from (point)))
+          (when (and warn-about-garbage (null pending-name) (not (looking-at (rx (0+ blank) (opt "#" (0+ nonl)) eol))))
+            (if (yes-or-no-p "Non-comment text before the first view will be discarded; continue? ")
+                (setq warn-about-garbage nil)
+              (keyboard-quit)))
+          (forward-line))))))
+
+(defun logview--insert-view-definitions (&optional predicate)
+  (dolist (view (logview--views))
+    (when (or (null predicate) (funcall predicate view))
+      (unless (bobp)
+        (insert "\n"))
+      (insert "view " (plist-get view :name) "\n")
+      (when (plist-get view :submode)
+        (insert "submode " (plist-get view :submode) "\n"))
+      (insert (plist-get view :filters))
+      (unless (bolp)
+        (insert "\n")))))
+
+(defun logview--save-views-if-needed ()
+  (when logview--views-need-saving
+    (with-temp-buffer
+      (logview--insert-view-definitions)
+      (write-region (point-min) (point-max) logview-views-file nil 'silent)
+      (setq logview--views-need-saving nil))))
+
+(defun logview--completing-read (&rest arguments)
+  (apply (if (fboundp 'ido-completing-read) 'ido-completing-read 'completing-read) arguments))
+
 
 
 ;;; Internal commands meant as hooks.
@@ -2172,6 +2422,10 @@ Optional third argument is to make the function suitable for
                                      (or (not (logview--match-successive-entries 1 t))
                                          (>= (match-beginning 0) end))))))))))))
 
+;; Exists for potential future expansion.
+(defun logview--kill-emacs-hook ()
+  (logview--save-views-if-needed))
+
 
 
 ;;; Logview Filter Edit mode.
@@ -2197,31 +2451,55 @@ Optional third argument is to make the function suitable for
   (logview-filter-edit--quit nil))
 
 (defun logview-filter-edit--quit (save)
-  (let ((parent  logview-filter-edit--parent-buffer)
-        (windows logview-filter-edit--window-configuration)
-        (filters (when save
-                   (buffer-substring-no-properties 1 (1+ (buffer-size))))))
-    (kill-buffer)
-    (switch-to-buffer parent)
-    (set-window-configuration windows)
-    (when save
-      (setq logview--current-filter-text filters)
-      (logview--parse-filters)
-      (logview--apply-parsed-filters))))
+  (let* ((parent  logview-filter-edit--parent-buffer)
+         (windows logview-filter-edit--window-configuration)
+         (do-quit (lambda ()
+                    (kill-buffer)
+                    (switch-to-buffer parent)
+                    (set-window-configuration windows))))
+    (if logview-filter-edit--editing-views
+        (progn (when save
+                 (let ((new-views (save-excursion
+                                    (goto-char 1)
+                                    (logview--parse-view-definitions t))))
+                   (if logview-filter-edit--editing-views-for-submode
+                       (let ((combined-views (nreverse new-views)))
+                         (dolist (view (logview--views))
+                           (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
+                             (push view combined-views)))
+                         (setq logview--views (nreverse combined-views)))
+                     (setq logview--views new-views))))
+               (funcall do-quit)
+               ;; This takes effect only after quitting.
+               (logview--update-mode-name))
+      (let ((filters (when save
+                       (buffer-substring-no-properties 1 (1+ (buffer-size))))))
+        (funcall do-quit)
+        (when save
+          (when (string-prefix-p logview-filter-edit--filters-hint-comment filters)
+            (setq filters (substring filters (length logview-filter-edit--filters-hint-comment))))
+          (setq logview--current-filter-text filters)
+          (logview--parse-filters)
+          (logview--apply-parsed-filters))))))
 
-(defun logview-filter-edit--initialize-text (text)
-  (unless (string-prefix-p logview-filter-edit--hint-comment text)
-    (setq text (concat logview-filter-edit--hint-comment text)))
+(defun logview-filter-edit--initialize-text (&optional filters-text)
   (delete-region 1 (1+ (buffer-size)))
-  (insert text)
-  (unless (bolp)
-    (insert "\n"))
+  (if logview-filter-edit--editing-views
+      (progn (insert logview-filter-edit--views-hint-comment)
+             (logview--insert-view-definitions (when logview-filter-edit--editing-views-for-submode
+                                                 (lambda (view) (string= (plist-get view :submode)
+                                                                         logview-filter-edit--editing-views-for-submode)))))
+    (unless (string-prefix-p logview-filter-edit--filters-hint-comment filters-text)
+      (insert logview-filter-edit--filters-hint-comment))
+    (insert filters-text)
+    (unless (bolp)
+      (insert "\n")))
   ;; Put cursor at the first filter beginning if possible.
   (goto-char 1)
-  (logview--iterate-filter-lines (lambda (type _line-begin begin _end)
-                                   (if (member type logview--valid-filter-prefixes)
-                                       (progn (goto-char begin) nil)
-                                     t)))
+  (logview--iterate-filter-buffer-lines (lambda (type _line-begin begin _end)
+                                          (if (member type logview--valid-filter-prefixes)
+                                              (progn (goto-char begin) nil)
+                                            t)))
   (set-buffer-modified-p nil))
 
 (defun logview-filter-edit--font-lock-region (region-begin region-end &optional _old-length)
@@ -2236,10 +2514,25 @@ Optional third argument is to make the function suitable for
           (while (and (not (bobp))
                       (looking-at "\.\. "))
             (forward-line -1))
-          (logview--iterate-filter-lines
+          (logview--iterate-filter-buffer-lines
            (lambda (type line-begin begin end)
              (cond ((null type)
-                    (put-text-property begin end 'face 'error))
+                    (unless (when logview-filter-edit--editing-views
+                              (save-excursion
+                                (goto-char line-begin)
+                                (cond ((looking-at logview--view-header-regexp)
+                                       (put-text-property (match-beginning 1) (match-end 1) 'face 'font-lock-keyword-face)
+                                       (put-text-property (match-beginning 2) (match-end 2) 'face 'font-lock-function-name-face)
+                                       t)
+                                      ((looking-at logview--view-submode-regexp)
+                                       (put-text-property (match-beginning 1) (match-end 1) 'face 'font-lock-keyword-face)
+                                       (let ((submode-name (match-string-no-properties 2)))
+                                         (put-text-property (match-beginning 2) (match-end 2) 'face (if (or (assoc submode-name logview-std-submodes)
+                                                                                                            (assoc submode-name logview-additional-submodes))
+                                                                                                        'font-lock-variable-name-face
+                                                                                                      'error)))
+                                       t))))
+                      (put-text-property begin end 'face 'error)))
                    ((string= type "#")
                     (put-text-property begin end 'face 'font-lock-comment-face))
                    ((string= type "")
@@ -2266,6 +2559,10 @@ Optional third argument is to make the function suitable for
                                  (forward-char 3)
                                  t))))))
              (< (point) region-end))))))))
+
+
+(add-hook 'kill-emacs-hook 'logview--kill-emacs-hook)
+(run-with-idle-timer 30 t 'logview--save-views-if-needed)
 
 
 (provide 'logview)
