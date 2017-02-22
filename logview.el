@@ -2320,10 +2320,13 @@ Each element is a plist with properties :name, :filters and
 This list is preserved across Emacs session in
 `logview-views-file'."
   (unless logview--views-initialized
-    (with-temp-buffer
-      (insert-file-contents logview-views-file)
-      (setq logview--views             (logview--parse-view-definitions)
-            logview--views-initialized t)))
+    (condition-case error
+        (with-temp-buffer
+          (insert-file-contents logview-views-file)
+          (setq logview--views (logview--parse-view-definitions)))
+      (file-missing)                    ; Ignored.
+      (file-error (warn "%s" (error-message-string error))))
+    (setq logview--views-initialized t))
   logview--views)
 
 (defun logview--parse-view-definitions (&optional warn-about-garbage)
