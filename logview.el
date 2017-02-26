@@ -461,7 +461,7 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 (defvar logview--all-timestamp-formats-cache nil)
 
 (defconst logview--valid-text-filter-prefixes '("a+" "a-" "t+" "t-" "m+" "m-"))
-(defconst logview--valid-filter-prefixes      (append '("lv") logview--valid-text-filter-prefixes))
+(defconst logview--valid-filter-prefixes      (append '("lv" "LV") logview--valid-text-filter-prefixes))
 
 
 (defvar-local logview--submode-name nil)
@@ -473,14 +473,18 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 Levels are ordered least to most important.")
 
 (defvar-local logview--submode-level-data nil
-  "An alist of level string to the following lists:
-- level symbol (for quick filtering);
-- level entry face;
-- level string face.")
+  "An alist of level string to the following vectors:
+0: level invisibility symbol (for quick filtering);
+1: level invisibility symbol when filtered (for quick filtering).
+2: level entry face;
+3: level string face;
+4: result of `logview--hide-entry-callback' with item 1;
+5: result of `logview--show-entry-callback' with item 1.")
 
-(defvar-local logview--min-shown-level     nil)
-(defvar-local logview--as-important-levels nil)
-(defvar-local logview--hide-all-details    nil)
+(defvar-local logview--min-shown-level        nil)
+(defvar-local logview--min-always-shown-level nil)
+(defvar-local logview--as-important-levels    nil)
+(defvar-local logview--hide-all-details       nil)
 
 (defvar-local logview--current-filter-text "")
 
@@ -544,6 +548,12 @@ Levels are ordered least to most important.")
      (logview-show-errors-warnings-information-and-debug                     "Show all levels except trace")
      (logview-show-all-levels                                                "Show entries of all levels")
      (logview-show-only-as-important                                         "Show entries ‘as important’ as the current one"))
+    ("Always show entries of certain levels"
+     (logview-disable-unconditional-show                                     "Disable ‘always show’")
+     (logview-always-show-errors                                             "Always (i.e. regardless of text filters) show errors")
+     (logview-always-show-errors-and-warnings                                "Always show errors and warnings")
+     (logview-always-show-errors-warnings-and-information                    "Always show errors, warnings and information")
+     (logview-always-show-errors-warnings-information-and-debug              "Always show all levels except trace"))
     ("Text-based filtering"
      (logview-edit-filters                                                   "Edit filters as text in a separate buffer")
      (logview-add-include-name-filter    logview-add-exclude-name-filter     "Add name include / exclude filter")
@@ -666,6 +676,16 @@ that the line is not the first in the buffer."
                        ("l t" logview-show-all-levels)
                        ("+"   logview-show-only-as-important)
                        ("l +" logview-show-only-as-important)
+                       ("L 1" logview-always-show-errors)
+                       ("L e" logview-always-show-errors)
+                       ("L 2" logview-always-show-errors-and-warnings)
+                       ("L w" logview-always-show-errors-and-warnings)
+                       ("L 3" logview-always-show-errors-warnings-and-information)
+                       ("L i" logview-always-show-errors-warnings-and-information)
+                       ("L 4" logview-always-show-errors-warnings-information-and-debug)
+                       ("L d" logview-always-show-errors-warnings-information-and-debug)
+                       ("L 0" logview-disable-unconditional-show)
+                       ("L L" logview-disable-unconditional-show)
                        ;; Filtering by name/thread/message commands.
                        ("f"   logview-edit-filters)
                        ("a"   logview-add-include-name-filter)
@@ -732,13 +752,13 @@ successfully.")
 ;;;###autoload
 (define-derived-mode logview-mode nil "Logview"
   "Major mode for viewing and filtering various log files."
-  (logview--update-invisibility-spec)
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook 'logview--update-keymap nil t)
   (set (make-local-variable 'filter-buffer-substring-function) 'logview--buffer-substring-filter)
   (set (make-local-variable 'isearch-filter-predicate)         'logview--isearch-filter-predicate)
   (add-hook 'change-major-mode-hook 'logview--exiting-mode nil t)
   (logview--guess-submode)
+  (logview--update-invisibility-spec)
   (unless (logview-initialized-p)
     (message "Cannot determine log format; press C-c C-s to customize relevant options")))
 
@@ -977,6 +997,35 @@ hidden."
     (when (logview--match-current-entry)
       (logview--change-min-level-filter (match-string logview--level-group)))))
 
+(defun logview-always-show-errors ()
+  "Always show error entries."
+  (interactive)
+  (logview--change-min-level-filter (logview--find-min-level 'error) t))
+
+(defun logview-always-show-errors-and-warnings ()
+  "Always show error and warning entries."
+  (interactive)
+  (logview--change-min-level-filter (logview--find-min-level 'warning) t))
+
+(defun logview-always-show-errors-warnings-and-information ()
+  "Always show error, warning and information entries."
+  (interactive)
+  (logview--change-min-level-filter (logview--find-min-level 'information) t))
+
+(defun logview-always-show-errors-warnings-information-and-debug ()
+  "Always show error, warning, information and debug entries.
+I.e. all entries other than traces are shown with no regard to
+text filters."
+  (interactive)
+  (logview--change-min-level-filter (logview--find-min-level 'debug) t))
+
+(defun logview-disable-unconditional-show ()
+  "Disable unconditional display of entries.
+All entries, regardless of level, will be shown only if they
+match the current text filters."
+  (interactive)
+  (logview--change-min-level-filter nil t))
+
 (defun logview--find-min-level (final-level)
   "Find minimal submode level that maps to given FINAL-LEVEL or higher."
   (logview--assert 'level)
@@ -987,11 +1036,12 @@ hidden."
         (setq result (car level-pair))))
     result))
 
-(defun logview--change-min-level-filter (min-level)
+(defun logview--change-min-level-filter (min-level &optional always-show)
   (when (and min-level (string= min-level (caar logview--submode-level-alist)))
     (setq min-level nil))
-  (let ((case-fold-search nil))
-    (let* ((level-filter-at       (string-match "^lv .*$" logview--current-filter-text))
+  (let ((case-fold-search nil)
+        (filter-prefix    (if always-show "LV" "lv")))
+    (let* ((level-filter-at       (string-match (format "^%s .*$" filter-prefix) logview--current-filter-text))
            (level-filter-line-end (match-end 0)))
       (if level-filter-at
           (setq logview--current-filter-text
@@ -1002,13 +1052,14 @@ hidden."
         (setq level-filter-at 0))
       (when min-level
         (setq logview--current-filter-text (concat (substring logview--current-filter-text 0 level-filter-at)
-                                                   "lv " min-level "\n"
+                                                   filter-prefix " " min-level "\n"
                                                    (substring logview--current-filter-text level-filter-at))))))
   (logview--parse-filters))
 
-(defun logview--set-min-level (min-level)
-  (unless (string= logview--min-shown-level min-level)
-    (setq logview--min-shown-level min-level)
+(defun logview--set-min-level (min-level min-always-shown-level)
+  (unless (and (equal logview--min-shown-level min-level) (equal logview--min-always-shown-level min-always-shown-level))
+    (setq logview--min-shown-level        min-level
+          logview--min-always-shown-level min-always-shown-level)
     (logview--update-invisibility-spec)))
 
 
@@ -1114,11 +1165,12 @@ that doesn't match any of entered expression."
 
 (defun logview-reset-level-filters ()
   "Reset all level filters.
-
-This is actually the same as `logview-show-all-levels'."
+This includes both minimal level to show entries and minimal
+level to show entries regardless of text filters."
   (interactive)
   (logview--assert 'level)
-  (logview-show-all-levels))
+  (logview-show-all-levels)
+  (logview-disable-unconditional-show))
 
 (defun logview-reset-name-filters ()
   "Reset all name filters."
@@ -1801,10 +1853,14 @@ returns non-nil."
                   (dolist (final-level logview--final-levels)
                     (dolist (level (cdr (assoc final-level levels)))
                       (setq logview--submode-level-alist (cons (cons level final-level) logview--submode-level-alist))
-                      (push (cons level (list (make-symbol level)
-                                              (intern (format "logview-%s-entry" (symbol-name final-level)))
-                                              (intern (format "logview-level-%s" (symbol-name final-level)))))
-                            logview--submode-level-data))))
+                      (let ((filtered-invisibility-spec (make-symbol (format "logview-filtered:%s" level))))
+                        (push (cons level (vector (make-symbol (format "logview:%s" level))
+                                                  filtered-invisibility-spec
+                                                  (intern (format "logview-%s-entry" (symbol-name final-level)))
+                                                  (intern (format "logview-level-%s" (symbol-name final-level)))
+                                                  (logview--hide-entry-callback filtered-invisibility-spec)
+                                                  (logview--show-entry-callback filtered-invisibility-spec)))
+                              logview--submode-level-data)))))
                 (logview--split-region-into-entries (point-min) (point-max) 'report-progress)
                 (add-hook 'after-change-functions 'logview--split-region-into-entries t t)
                 (read-only-mode 1)
@@ -2011,17 +2067,22 @@ See `logview--iterate-entries-forward' for details."
                       (format "Logview/%s" logview--submode-name)))))
 
 (defun logview--update-invisibility-spec ()
-  (let ((invisibility-spec '(logview-filtered logview-hidden-entry logview-hidden-details))
-        (found nil))
-    ;; Initially it's nil.
-    (when logview--min-shown-level
-      (dolist (level-pair logview--submode-level-alist)
-        (when (string= (car level-pair) logview--min-shown-level)
-          (setq found t))
-        (unless found
-          (setq invisibility-spec (cons (nth 0 (cdr (assoc (car level-pair) logview--submode-level-data))) invisibility-spec)))))
+  (let ((invisibility-spec '(logview-hidden-entry logview-hidden-details)))
+    (if logview--submode-level-alist
+        (let ((show        (null logview--min-shown-level))
+              (always-show nil))
+          (dolist (level-pair logview--submode-level-data)
+            (when (equal (car level-pair) logview--min-shown-level)
+              (setq show t))
+            (when (equal (car level-pair) logview--min-always-shown-level)
+              (setq always-show t))
+            (unless show
+              (push (aref (cdr level-pair) 0) invisibility-spec))
+            (unless always-show
+              (push (aref (cdr level-pair) 1) invisibility-spec))))
+      (push 'logview-filtered invisibility-spec))
     (when logview--hide-all-details
-      (setq invisibility-spec (cons 'logview-details invisibility-spec)))
+      (push 'logview-details invisibility-spec))
     (setq buffer-invisibility-spec
           (if logview-show-ellipses
               (mapcar (lambda (x) (cons x t)) invisibility-spec)
@@ -2038,6 +2099,7 @@ See `logview--iterate-entries-forward' for details."
   ;; locally, so their values are properly transferred.
   (let ((filters logview--current-filter-text)
         min-shown-level
+        min-always-shown-level
         non-discarded-lines
         include-name-regexps
         exclude-name-regexps
@@ -2056,19 +2118,22 @@ See `logview--iterate-entries-forward' for details."
            (when (and (not (and filter-line reset-this-filter)) (or non-discarded-lines (not (equal type ""))))
              (push (buffer-substring-no-properties line-begin (point)) non-discarded-lines))
            (when (and filter-line (not reset-this-filter))
-             (if (string= type "lv")
-                 (setq min-shown-level (buffer-substring-no-properties begin end))
-               (let ((regexp (logview--filter-regexp begin end)))
-                 (when (logview--valid-regexp-p regexp)
-                   (pcase type
-                     ("a+" (push regexp include-name-regexps))
-                     ("a-" (push regexp exclude-name-regexps))
-                     ("t+" (push regexp include-thread-regexps))
-                     ("t-" (push regexp exclude-thread-regexps))
-                     ("m+" (push regexp include-message-regexps))
-                     ("m-" (push regexp exclude-message-regexps)))))))
+             (cond ((string= type "lv")
+                    (setq min-shown-level (buffer-substring-no-properties begin end)))
+                   ((string= type "LV")
+                    (setq min-always-shown-level (buffer-substring-no-properties begin end)))
+                   (t
+                    (let ((regexp (logview--filter-regexp begin end)))
+                      (when (logview--valid-regexp-p regexp)
+                        (pcase type
+                          ("a+" (push regexp include-name-regexps))
+                          ("a-" (push regexp exclude-name-regexps))
+                          ("t+" (push regexp include-thread-regexps))
+                          ("t-" (push regexp exclude-thread-regexps))
+                          ("m+" (push regexp include-message-regexps))
+                          ("m-" (push regexp exclude-message-regexps))))))))
            t))))
-    (logview--set-min-level min-shown-level)
+    (logview--set-min-level min-shown-level min-always-shown-level)
     (setq logview--current-filter-text (apply 'concat (nreverse non-discarded-lines))
           logview--name-filter         (logview--build-filter include-name-regexps    exclude-name-regexps)
           logview--thread-filter       (logview--build-filter include-thread-regexps  exclude-thread-regexps)
@@ -2089,14 +2154,14 @@ Buffer must be positioned at the start of a line.  Iteration
 continues until CALLBACK returns nil or end of buffer is reached.
 
 CALLBACK is called with four arguments: TYPE, LINE-BEGIN, BEGIN,
-and END.  TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\", \"m-\"
-or \"lv\" for valid filter types, \"#\" for comment line and \"\" for an
-empty line, or nil to indicate an erroneous line.  BEGIN and END
-determine filter text boundaries (may span several lines for
-message filters.  LINE-BEGIN is the beginnig of the line where
-the entry starts; in case of filters this is a few characters
-before BEGIN.  Point is positioned at the start of next line,
-which is usually one line beyond END."
+and END.  TYPE may be a string: \"a+\", \"a-\", \"t+\", \"t-\", \"m+\",
+\"m-\", \"lv\" or \"LV\" for valid filter types, \"#\" for comment line
+and \"\" for an empty line, or nil to indicate an erroneous line.
+BEGIN and END determine filter text boundaries (may span several
+lines for message filters.  LINE-BEGIN is the beginnig of the
+line where the entry starts; in case of filters this is a few
+characters before BEGIN.  Point is positioned at the start of
+next line, which is usually one line beyond END."
   (let ((case-fold-search nil)
         line-begin
         begin
@@ -2105,7 +2170,7 @@ which is usually one line beyond END."
                 (progn
                   (setq line-begin (point)
                         begin      line-begin
-                        type       (when (looking-at "\\(lv\\|[atm][-+]\\) \\|\\s-*\\(#\\)\\|\\s-*$")
+                        type       (when (looking-at "\\(lv\\|LV\\|[atm][-+]\\) \\|\\s-*\\(#\\)\\|\\s-*$")
                                      (if (match-beginning 1)
                                          (progn (setq begin (match-end 0))
                                                 (match-string 1))
@@ -2164,20 +2229,20 @@ which is usually one line beyond END."
               (put-text-property 1 (if anchored (match-beginning 0) (1+ (buffer-size))) 'face      nil)
               (put-text-property 1 (if anchored (match-beginning 0) (1+ (buffer-size))) 'invisible nil))
             (when anchored
-              (let ((reporter           (when reporter-builder (funcall reporter-builder (match-beginning 0) region-end)))
-                    (have-timestamp     (memq 'timestamp logview--submode-features))
-                    (have-level         (memq 'level     logview--submode-features))
-                    (have-name          (memq 'name      logview--submode-features))
-                    (have-thread        (memq 'thread    logview--submode-features))
-                    (hider              (logview--hide-entry-callback 'logview-filtered))
-                    (shower             (logview--show-entry-callback 'logview-filtered))
-                    (explicit-shower    (when cancel-explicit-hiding (logview--show-entry-callback 'logview-hidden-entry)))
-                    (num-hidden         0)
-                    (num-visible        0)
-                    (match-data-storage '(nil))
-                    message-begin
-                    matches-name/thread
-                    level-data)
+              (let* ((reporter           (when reporter-builder (funcall reporter-builder (match-beginning 0) region-end)))
+                     (have-timestamp     (memq 'timestamp logview--submode-features))
+                     (have-level         (memq 'level     logview--submode-features))
+                     (have-name          (memq 'name      logview--submode-features))
+                     (have-thread        (memq 'thread    logview--submode-features))
+                     (hider              (unless have-level (logview--hide-entry-callback 'logview-filtered)))
+                     (shower             (unless have-level (logview--show-entry-callback 'logview-filtered)))
+                     (explicit-shower    (when cancel-explicit-hiding (logview--show-entry-callback 'logview-hidden-entry)))
+                     (num-hidden         0)
+                     (num-visible        0)
+                     (match-data-storage '(nil))
+                     message-begin
+                     matches-name/thread
+                     level-data)
                 ;; Because 'callback' doesn't get access to match
                 ;; data, while 'validator' doesn't know all entry
                 ;; limits, we use both and pass 'matches-name/thread'
@@ -2186,9 +2251,9 @@ which is usually one line beyond END."
                  (lambda (begin after-first-line end)
                    (when (and set-up-entries (< after-first-line end) have-level)
                      (when have-level
-                       (put-text-property after-first-line end 'face (nth 1 level-data)))
+                       (put-text-property after-first-line end 'face (aref level-data 2)))
                      (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back end)
-                                        'invisible (list (nth 0 level-data) 'logview-details)))
+                                        'invisible (list (aref level-data 0) 'logview-details)))
                    ;; Remember that 'matches-name/thread' is not the
                    ;; final value, we still need to check if entry's
                    ;; message passes filters.
@@ -2205,9 +2270,9 @@ which is usually one line beyond END."
                                       (funcall message-filter (buffer-substring-no-properties message-begin end)))
                                   (set-match-data match-data-storage))))
                        (unless set-up-entries
-                         (funcall shower begin after-first-line end)
+                         (funcall (or shower (aref level-data 5)) begin after-first-line end)
                          (setq num-visible (1+ num-visible)))
-                     (funcall hider begin after-first-line end)
+                     (funcall (or hider (aref level-data 4)) begin after-first-line end)
                      (setq num-hidden (1+ num-hidden)))
                    (when explicit-shower
                      (funcall explicit-shower begin after-first-line end))
@@ -2218,16 +2283,16 @@ which is usually one line beyond END."
                  nil
                  (lambda ()
                    (let ((case-fold-search case-insensitive))
+                     (when have-level
+                       (setq level-data (cdr (assoc (match-string logview--level-group) logview--submode-level-data))))
                      (when set-up-entries
-                       (when have-level
-                         (setq level-data (cdr (assoc (match-string logview--level-group) logview--submode-level-data)))
-                         ;; Point is guaranteed to be at the start of the next line.
-                         (put-text-property (match-beginning 0) (point) 'face (nth 1 level-data))
-                         (put-text-property (logview--linefeed-back-checked (match-beginning 0)) (logview--linefeed-back (point))
-                                            'invisible (list (nth 0 level-data)))
-                         (add-face-text-property (match-beginning logview--level-group)
-                                                 (match-end       logview--level-group)
-                                                 (nth 2 level-data)))
+                       ;; Point is guaranteed to be at the start of the next line.
+                       (put-text-property (match-beginning 0) (point) 'face (aref level-data 2))
+                       (put-text-property (logview--linefeed-back-checked (match-beginning 0)) (logview--linefeed-back (point))
+                                          'invisible (list (aref level-data 0)))
+                       (add-face-text-property (match-beginning logview--level-group)
+                                               (match-end       logview--level-group)
+                                               (aref level-data 3)))
                        (when have-timestamp
                          (add-face-text-property (match-beginning logview--timestamp-group)
                                                  (match-end       logview--timestamp-group)
@@ -2239,7 +2304,7 @@ which is usually one line beyond END."
                        (when have-thread
                          (add-face-text-property (match-beginning logview--thread-group)
                                                  (match-end       logview--thread-group)
-                                                 'logview-thread)))
+                                                 'logview-thread))
                      (setq message-begin       (match-end 0)
                            matches-name/thread (or no-name/thread-filters
                                                    ;; Since the filters involve regexp matching themselves,
@@ -2540,7 +2605,7 @@ Optional third argument is to make the function suitable for
                     (put-text-property begin end 'face 'font-lock-comment-face))
                    ((string= type "")
                     (put-text-property begin end 'face nil))
-                   ((string= type "lv")
+                   ((or (string= type "lv") (string= type "LV"))
                     (put-text-property line-begin begin 'face 'logview-edit-filters-type-prefix)
                     (let ((level-string (buffer-substring-no-properties begin end))
                           (known-levels (with-current-buffer logview-filter-edit--parent-buffer

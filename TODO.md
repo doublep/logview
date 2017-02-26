@@ -11,10 +11,6 @@
   difficult to implement, but requires pondering on how to make the
   commands comfortable to use.
 
-* Add a way to always show errors/warnings even if they would
-  otherwise be filtered out.  Explicit hiding should still take
-  precedence though.
-
 * Idle buffer parsing/filtering, otherwise mode is semi-useless in
   huge logs.
 

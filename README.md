@@ -112,6 +112,18 @@ active again.
 * Show entries of all levels: `l 5` or `l t`
 * Show entries ‘as important’ as the current one: `+` or `l +`
 
+#### Always show entries of certain levels
+
+It is possible to always display entries of certain levels, regardless
+of any additional text filters.
+
+* Always show errors: `L 1` or `L e`
+* Always show errors and warnings: `L 2` or `L w`
+* Always show errors, warnings and information: `L 3` or `L i`
+* Always show all levels except trace: `L 4` or `L d`
+* Disable ‘always show’ feature: `L L` or `L 0`
+
+
 #### Filtering by entry’s logger name, thread or message
 
 See [more detailed description below](#filters-explained).
@@ -206,15 +218,37 @@ filters, `R` for all filters at once.
 However, oftentimes you need to adjust existing filters, e.g. to fix a
 typo or simply change one, while keeping others the same.  For this
 purpose use `f` command.  It pops up a separate buffer with all
-currently active filters, which you can edit as you like, using any
-standard Emacs features.
+currently active filters (both level and text), which you can edit as
+you like, using any standard Emacs features.
 
 Lines beginning with ‘#’ character are comments.  They and empty lines
-are ignored.  Lines for actual filters must start with certain prefix:
-‘a+ ’ (note the single trailing space!) for name inclusion filters,
-‘a- ’ for name exclusion, and similart ‘t+ ’, ‘t- ’, ‘m+ ’, ‘m- ’ for
+are ignored.  Lines for level filters must start with prefix ‘lv ’
+(note the single trailing space!) for normal filtering or ‘LV ’ for
+‘always show’ pseudo-filter, and contain the textual level
+representation afterwards, just as you would see it in the logfile.
+For example:
+
+    lv DEBUG
+    LV ERROR
+
+means “show all entries except trace-level, and additionally show all
+errors with no regard to text filters.”
+
+Lines for text filters are similar.  They must start with ‘a+ ’
+(again, remember the trailing space) for name inclusion filters, ‘a- ’
+for name exclusion, and similarly ‘t+ ’, ‘t- ’, ‘m+ ’, ‘m- ’ for
 thread and message filters.  Additionally, multiline message filters
 must use ‘.. ’ prefix (two dots and a space) for continuation lines.
+For example:
+
+    a+ database
+    m+ ^insert.+
+    .. values
+
+means “show entries with word ‘database’ in the logger name and which
+message has a line beginning with ‘insert’ and the line after that
+beginning with ‘values’.”
+
 The buffer mode has some syntax highlighting support, so you should
 see if anything goes wrong.  The easiest way to figure it out is to
 add a few filters using commands described earlier and then open this
