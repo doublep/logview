@@ -2389,8 +2389,11 @@ This list is preserved across Emacs session in
         (with-temp-buffer
           (insert-file-contents logview-views-file)
           (setq logview--views (logview--parse-view-definitions)))
-      (file-missing)                    ; Ignored.
-      (file-error (warn "%s" (error-message-string error))))
+      (file-missing)
+      (file-error
+       ;; Pre-26 versions don't have 'file-missing' error.  Let's just ignore all IO errors on them.
+       (when (>= emacs-major-version 26)
+         (warn "%s" (error-message-string error)))))
     (setq logview--views-initialized t))
   logview--views)
 
