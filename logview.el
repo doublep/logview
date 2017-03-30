@@ -451,6 +451,7 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
                                                  (group "THREAD")
                                                  (group "IGNORED"))
                                          eow))
+(defconst logview--timestamp-entry-part-regexp (rx bow "TIMESTAMP" eow))
 
 (defvar logview--datetime-options '(:second-fractional-extension t
                                     :only-4-digit-years t
@@ -497,6 +498,8 @@ Levels are ordered least to most important.")
 (defvar logview--empty-filter-id '((nil nil) (nil nil) (nil nil)))
 (defvar-local logview--applied-filter-id logview--empty-filter-id)
 
+(defvar logview--submode-name-history)
+(defvar logview--timestamp-format-history)
 (defvar logview--name-regexp-history)
 (defvar logview--thread-regexp-history)
 (defvar logview--message-regexp-history)
@@ -591,6 +594,7 @@ Levels are ordered least to most important.")
      (logview-toggle-show-ellipses                                           "Toggle ‘show ellipses’")
      "Options can be customized globally or changed in each buffer.")
     ("Miscellaneous"
+     (logview-choose-submode                                                 "Manually choose appropriate submode")
      (logview-customize-submode-options                                      "Customize options that affect submode selection")
      (bury-buffer                                                            "Bury buffer")
      (logview-refresh-buffer-as-needed                                       "Append tail or revert the buffer, as needed")
@@ -723,8 +727,10 @@ that the line is not the first in the buffer."
                        ("o v" logview-toggle-copy-visible-text-only)
                        ("o m" logview-toggle-search-only-in-messages)
                        ("o e" logview-toggle-show-ellipses)
+                       ("o s" logview-choose-submode)
                        ("o S" logview-customize-submode-options)
                        ;; For compatibility with the inactive keymap.
+                       ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
                        ("?"   logview-mode-help)
@@ -741,6 +747,7 @@ that the line is not the first in the buffer."
 
 (defvar logview-mode-inactive-map
   (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") 'logview-choose-submode)
     (define-key map (kbd "C-c C-s") 'logview-customize-submode-options)
     map)
   "Keymap used by `logview-mode' when the mode is inactive.
@@ -760,7 +767,7 @@ successfully.")
   (logview--guess-submode)
   (logview--update-invisibility-spec)
   (unless (logview-initialized-p)
-    (message "Cannot determine log format; press C-c C-s to customize relevant options")))
+    (message "Cannot determine log format; press C-c C-c to choose manually or C-c C-s to customize relevant options")))
 
 (defun logview--update-keymap ()
   (use-local-map (if (and buffer-read-only (logview-initialized-p))
@@ -1533,6 +1540,56 @@ argument is positive, disable it otherwise."
                                   "Hidden log entries are completely invisible")
   (logview--update-invisibility-spec))
 
+(defun logview-choose-submode (submode &optional timestamp)
+  "Manually choose submode for the current buffer.
+SUBMODE must be a name or an alias a supported submode from
+`logview-additional-submodes' or `logview-std-submodes' (aliases
+are understood too).  Timestamp may be either such a name or
+alias from `logview-additional-timestamp-formats' or
+`logview-std-timestamp-formats', or just a raw Java pattern.  If
+submode doesn't use timestamps, this parameter is ignored.
+
+When called interactively, both parameters are read in the
+minibuffer."
+  (interactive (list (let (submodes)
+                       (logview--iterate-split-alists (lambda (name definition)
+                                                        (push name submodes)
+                                                        (setq submodes (append (cdr (assq 'aliases definition)) submodes)))
+                                                      logview-additional-submodes logview-std-submodes)
+                       (logview--completing-read "Submode name: " submodes nil t nil 'logview--submode-name-history))))
+  (let ((submode-definition (catch 'found
+                              (logview--iterate-split-alists (lambda (name definition)
+                                                               (when (string= submode name)
+                                                                 (throw 'found definition)))
+                                                             logview-additional-submodes logview-std-submodes)))
+        timestamp-definition)
+    (unless submode-definition
+      (error "Unknown submode `%s'" submode))
+    (when (string-match logview--timestamp-entry-part-regexp (cdr (assq 'format submode-definition)))
+      (unless timestamp
+        (unless (called-interactively-p 'interactive)
+          (error "Must specify a timestamp format for submode `%s'" submode))
+        (setq timestamp (let (timestamps)
+                          (logview--iterate-split-alists (lambda (name definition)
+                                                           (push name timestamps)
+                                                           (setq timestamps (append (cdr (assq 'aliases definition)) timestamps)))
+                                                         logview-additional-timestamp-formats logview-std-timestamp-formats)
+                          (dolist (format (logview--all-timestamp-formats))
+                            (unless (datetime-pattern-locale-dependent-p 'java (car format))
+                              (push (car format) timestamps)))
+                          (completing-read "Timestamp format: " timestamps nil nil nil 'logview--timestamp-format-history))))
+      (setq timestamp-definition (catch 'found
+                                   (logview--iterate-split-alists (lambda (name definition)
+                                                                    (when (string= timestamp name)
+                                                                      (throw 'found definition)))
+                                                                  logview-additional-timestamp-formats logview-std-timestamp-formats)
+                                   ;; Unlike with submodes, allow unrecognized timestamps.
+                                   `(,timestamp (java-pattern . ,timestamp)))))
+    (catch 'success
+      (logview--initialize-submode submode submode-definition (list timestamp-definition))
+      ;; This must not happen.
+      (error "Internal error initializing submode `%s'" submode))))
+
 (defun logview-customize-submode-options ()
   "Customize all options that affect submode selection.
 These are:
@@ -1729,8 +1786,8 @@ returns non-nil."
             standard-timestamps)
         (logview--iterate-split-alists (lambda (_timestamp-name timestamp) (push timestamp standard-timestamps))
                                        logview-additional-timestamp-formats logview-std-timestamp-formats)
-        (dolist (regexp (logview--all-timestamp-formats))
-          (push (list (cons 'regexp regexp)) standard-timestamps))
+        (dolist (format (logview--all-timestamp-formats))
+          (push (cdr format) standard-timestamps))
         (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
           (logview--iterate-split-alists (lambda (name definition)
@@ -1739,9 +1796,9 @@ returns non-nil."
                                              (error (warn (error-message-string error)))))
                                          logview-additional-submodes logview-std-submodes))))))
 
-(defun logview--initialize-submode (name definition standard-timestamps test-line)
+(defun logview--initialize-submode (name definition standard-timestamps &optional test-line)
   (let* ((format            (cdr (assq 'format    definition)))
-         (timestamp-names   (cdr (assq 'timestamp definition)))
+         (timestamp-names   (when test-line (cdr (assq 'timestamp definition))))
          (timestamp-options (if timestamp-names
                                 (mapcar (lambda (name)
                                           (logview--get-split-alists name "timestamp format"
@@ -1823,7 +1880,7 @@ returns non-nil."
       ;; the test line doesn't have even two digits at the expected
       ;; place, don't even loop through all the timestamp options.
       (setcar timestamp-at ".*[0-9][0-9].*")
-      (unless (string-match (apply #'concat parts) test-line)
+      (when (and test-line (not (string-match (apply #'concat parts) test-line)))
         (setq cannot-match t)))
     (unless cannot-match
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
@@ -1842,7 +1899,7 @@ returns non-nil."
             (when timestamp-at
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
             (let ((regexp (apply #'concat parts)))
-              (when (string-match regexp test-line)
+              (when (or (null test-line) (string-match regexp test-line))
                 (setq logview--submode-name           name
                       logview--process-buffer-changes t
                       logview--entry-regexp           regexp
@@ -1906,8 +1963,8 @@ returns non-nil."
                          (push (cdr key) (cdr existing)))
                      (puthash regexp (cons (car key) (list (cdr key))) uniques))))
                patterns)
-      (maphash (lambda (regexp _key)
-                 (push regexp logview--all-timestamp-formats-cache))
+      (maphash (lambda (regexp key)
+                 (push `(,(car key) (regexp . ,regexp)) logview--all-timestamp-formats-cache))
                uniques)
       (let ((inhibit-message t))
         (message "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time)))))
