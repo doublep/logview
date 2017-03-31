@@ -65,10 +65,23 @@ you will be able to edit it.
 
 #### What to do if Logview mode fails to guess format
 
-Currently your only option is to customize the mode.  `C-c C-s` will
-show you only those options that are relevant to submode guessing.
+This depends on *why* it fails.  If the mode doesn’t know about this
+log format at all, customize the relevant options.  `C-c C-s` will
+show you the three variables that are important for submode guessing.
 You will need to customize at least one of those, or maybe all three.
 All the variables are well-documented in customization interface.
+
+However, it is also possible that Logview fails because it currently
+looks only at the first line in the file.  If real log entries in your
+logs do not start at the very beginning, automatic guessing will not
+succeed even when you have already registered the submode.  In this
+case, you can force Logview to switch to appropriate submode using
+`C-c C-c` shortcut.  Remember that you still need to have it
+registered first.
+
+In case you don’t want to manually select submode each time in such
+cases, you can set up some automatic switching from a hook using Elisp
+function `logview-choose-submode`.
 
 If you think your log format is standard enough, you can open an issue
 and request format addition to the list of mode built-ins.
@@ -188,6 +201,7 @@ changed in each individual buffer.
 
 #### Miscellaneous
 
+* Manually choose appropriate submode and timestamp format: `o s` or `C-c C-c`
 * Customize options that affect submode selection: `o S` or `C-c C-s`
 * Bury buffer: `q`
 * Refresh the buffer (appending, if possible) preserving active filters: `g`

@@ -1577,7 +1577,7 @@ minibuffer."
                           (dolist (format (logview--all-timestamp-formats))
                             (unless (datetime-pattern-locale-dependent-p 'java (car format))
                               (push (car format) timestamps)))
-                          (completing-read "Timestamp format: " timestamps nil nil nil 'logview--timestamp-format-history))))
+                          (logview--completing-read "Timestamp format: " timestamps nil nil nil 'logview--timestamp-format-history))))
       (setq timestamp-definition (catch 'found
                                    (logview--iterate-split-alists (lambda (name definition)
                                                                     (when (string= timestamp name)
