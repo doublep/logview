@@ -2307,8 +2307,7 @@ next line, which is usually one line beyond END."
                 (logview--iterate-entries-forward
                  (lambda (begin after-first-line end)
                    (when (and set-up-entries (< after-first-line end) have-level)
-                     (when have-level
-                       (put-text-property after-first-line end 'face (aref level-data 2)))
+                     (put-text-property after-first-line end 'face (aref level-data 2))
                      (put-text-property (logview--linefeed-back after-first-line) (logview--linefeed-back end)
                                         'invisible (list (aref level-data 0) 'logview-details)))
                    ;; Remember that 'matches-name/thread' is not the
@@ -2343,13 +2342,14 @@ next line, which is usually one line beyond END."
                      (when have-level
                        (setq level-data (cdr (assoc (match-string logview--level-group) logview--submode-level-data))))
                      (when set-up-entries
-                       ;; Point is guaranteed to be at the start of the next line.
-                       (put-text-property (match-beginning 0) (point) 'face (aref level-data 2))
-                       (put-text-property (logview--linefeed-back-checked (match-beginning 0)) (logview--linefeed-back (point))
-                                          'invisible (list (aref level-data 0)))
-                       (add-face-text-property (match-beginning logview--level-group)
-                                               (match-end       logview--level-group)
-                                               (aref level-data 3)))
+                       (when have-level
+                         ;; Point is guaranteed to be at the start of the next line.
+                         (put-text-property (match-beginning 0) (point) 'face (aref level-data 2))
+                         (put-text-property (logview--linefeed-back-checked (match-beginning 0)) (logview--linefeed-back (point))
+                                            'invisible (list (aref level-data 0)))
+                         (add-face-text-property (match-beginning logview--level-group)
+                                                 (match-end       logview--level-group)
+                                                 (aref level-data 3)))
                        (when have-timestamp
                          (add-face-text-property (match-beginning logview--timestamp-group)
                                                  (match-end       logview--timestamp-group)
@@ -2361,7 +2361,7 @@ next line, which is usually one line beyond END."
                        (when have-thread
                          (add-face-text-property (match-beginning logview--thread-group)
                                                  (match-end       logview--thread-group)
-                                                 'logview-thread))
+                                                 'logview-thread)))
                      (setq message-begin       (match-end 0)
                            matches-name/thread (or no-name/thread-filters
                                                    ;; Since the filters involve regexp matching themselves,
