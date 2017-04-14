@@ -164,6 +164,12 @@ format
     needed.  Usecase for it are log files that contain too many
     fields to map to the ones Logview supports natively.
 
+    Finally, you can explicitly specify \"MESSAGE\" field at the
+    very end of the format string.  Normally, you can leave that
+    to Logview, just as in the example above.  However, when the
+    mode adds the field itself, it also prepends it with a space,
+    which might be incorrect for some special custom submodes.
+
 levels  [may be optional]
 
     Level mapping (see `logview-additional-level-mappings') used
@@ -442,6 +448,7 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
 (defconst logview--name-group      3)
 (defconst logview--thread-group    4)
 (defconst logview--ignored-group   5)
+(defconst logview--message-group   6)
 
 (defconst logview--final-levels '(error warning information debug trace))
 
@@ -449,7 +456,8 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
                                                  (group "LEVEL")
                                                  (group "NAME")
                                                  (group "THREAD")
-                                                 (group "IGNORED"))
+                                                 (group "IGNORED")
+                                                 (group "MESSAGE"))
                                          eow))
 (defconst logview--timestamp-entry-part-regexp (rx bow "TIMESTAMP" eow))
 
@@ -1814,6 +1822,7 @@ returns non-nil."
          timestamp-at
          cannot-match
          features
+         have-explicit-message
          (add-text-part (lambda (from to)
                           (push (replace-regexp-in-string "[ \t]+" "[ \t]+" (regexp-quote (substring format from to))) parts))))
     (unless (and (stringp format) (> (length format) 0))
@@ -1838,6 +1847,10 @@ returns non-nil."
                                                               logview--final-levels))))
                    parts)
              (push 'level features))
+            ((match-beginning logview--message-group)
+             (unless (= (match-end logview--message-group) (length format))
+               (user-error "Field `MESSAGE' can only be placed at the very end of format string"))
+             (setq have-explicit-message t))
             (t
              (dolist (k (list logview--name-group logview--thread-group logview--ignored-group))
                (when (match-beginning k)
@@ -1871,8 +1884,8 @@ returns non-nil."
       (setq search-from end))
     (when (< search-from (length format))
       (funcall add-text-part search-from nil))
-    ;; Always behave as if format string ends with whitespace.
-    (unless (string-match "[ \t]$" format)
+    ;; Unless `MESSAGE' field is used explicitly, behave as if format string ends with whitespace.
+    (unless (or have-explicit-message (string-match "[ \t]$" format))
       (push "[ \t]+" parts))
     (setq parts (nreverse parts))
     (when timestamp-at
