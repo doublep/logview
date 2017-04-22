@@ -506,11 +506,11 @@ Levels are ordered least to most important.")
 (defvar logview--empty-filter-id '((nil nil) (nil nil) (nil nil)))
 (defvar-local logview--applied-filter-id logview--empty-filter-id)
 
-(defvar logview--submode-name-history)
-(defvar logview--timestamp-format-history)
-(defvar logview--name-regexp-history)
-(defvar logview--thread-regexp-history)
-(defvar logview--message-regexp-history)
+(defvar logview--submode-name-history nil)
+(defvar logview--timestamp-format-history nil)
+(defvar logview--name-regexp-history nil)
+(defvar logview--thread-regexp-history nil)
+(defvar logview--message-regexp-history nil)
 
 (defvar-local logview--process-buffer-changes nil)
 
@@ -2516,9 +2516,16 @@ This list is preserved across Emacs session in
       (write-region (point-min) (point-max) logview-views-file nil 'silent)
       (setq logview--views-need-saving nil))))
 
-(defun logview--completing-read (&rest arguments)
-  (apply (if (fboundp 'ido-completing-read) 'ido-completing-read 'completing-read) arguments))
+(defcustom logview-completing-read-function 'completing-read
+  "Completion system used by Logview."
+  :group 'logview
+  :type '(radio
+          (function-item :tag "Default" completing-read)
+          (function-item :tag "Ido" ido-completing-read)
+          (function :tag "Custom function")))
 
+(defun logview--completing-read (&rest arguments)
+  (apply (symbol-value 'logview-completing-read-function) arguments))
 
 
 ;;; Internal commands meant as hooks.
