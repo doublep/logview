@@ -506,11 +506,11 @@ Levels are ordered least to most important.")
 (defvar logview--empty-filter-id '((nil nil) (nil nil) (nil nil)))
 (defvar-local logview--applied-filter-id logview--empty-filter-id)
 
-(defvar logview--submode-name-history)
-(defvar logview--timestamp-format-history)
-(defvar logview--name-regexp-history)
-(defvar logview--thread-regexp-history)
-(defvar logview--message-regexp-history)
+(defvar logview--submode-name-history nil)
+(defvar logview--timestamp-format-history nil)
+(defvar logview--name-regexp-history nil)
+(defvar logview--thread-regexp-history nil)
+(defvar logview--message-regexp-history nil)
 
 (defvar-local logview--process-buffer-changes nil)
 
