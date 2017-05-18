@@ -348,6 +348,15 @@ To temporarily change this on per-buffer basis type \\<logview-mode-map>\\[logvi
   :group 'logview
   :type  'file)
 
+(defcustom logview-completing-read-function nil
+  "Completion system used by Logview."
+  :group 'logview
+  :type  '(radio
+           (const :tag "Auto" nil)
+           (function-item completing-read)
+           (function-item ido-completing-read)
+           (function :tag "Custom function")))
+
 
 (defgroup logview-faces nil
   "Faces for Logview mode."
@@ -506,11 +515,11 @@ Levels are ordered least to most important.")
 (defvar logview--empty-filter-id '((nil nil) (nil nil) (nil nil)))
 (defvar-local logview--applied-filter-id logview--empty-filter-id)
 
-(defvar logview--submode-name-history)
-(defvar logview--timestamp-format-history)
-(defvar logview--name-regexp-history)
-(defvar logview--thread-regexp-history)
-(defvar logview--message-regexp-history)
+(defvar logview--submode-name-history     nil)
+(defvar logview--timestamp-format-history nil)
+(defvar logview--name-regexp-history      nil)
+(defvar logview--thread-regexp-history    nil)
+(defvar logview--message-regexp-history   nil)
 
 (defvar-local logview--process-buffer-changes nil)
 
@@ -2517,7 +2526,11 @@ This list is preserved across Emacs session in
       (setq logview--views-need-saving nil))))
 
 (defun logview--completing-read (&rest arguments)
-  (apply (if (fboundp 'ido-completing-read) 'ido-completing-read 'completing-read) arguments))
+  (apply (or logview-completing-read-function
+             (if (and (boundp 'ido-mode) (fboundp 'ido-completing-read) ido-mode)
+                 #'ido-completing-read
+               #'completing-read))
+         arguments))
 
 
 
