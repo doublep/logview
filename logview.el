@@ -2622,7 +2622,8 @@ Optional third argument is to make the function suitable for
                            (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
                              (push view combined-views)))
                          (setq logview--views (nreverse combined-views)))
-                     (setq logview--views new-views))))
+                     (setq logview--views             new-views
+                           logview--views-need-saving t))))
                (funcall do-quit)
                ;; This takes effect only after quitting.
                (logview--update-mode-name))
