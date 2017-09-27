@@ -1574,14 +1574,8 @@ minibuffer."
                                                         (setq submodes (append (cdr (assq 'aliases definition)) submodes)))
                                                       logview-additional-submodes logview-std-submodes)
                        (logview--completing-read "Submode name: " submodes nil t nil 'logview--submode-name-history))))
-  (let ((submode-definition (catch 'found
-                              (logview--iterate-split-alists (lambda (name definition)
-                                                               (when (string= submode name)
-                                                                 (throw 'found definition)))
-                                                             logview-additional-submodes logview-std-submodes)))
+  (let ((submode-definition (logview--get-split-alists submode "submode" logview-additional-submodes logview-std-submodes))
         timestamp-definition)
-    (unless submode-definition
-      (error "Unknown submode `%s'" submode))
     (when (string-match logview--timestamp-entry-part-regexp (cdr (assq 'format submode-definition)))
       (unless timestamp
         (unless (called-interactively-p 'interactive)
@@ -1595,13 +1589,9 @@ minibuffer."
                             (unless (datetime-pattern-locale-dependent-p 'java (car format))
                               (push (car format) timestamps)))
                           (logview--completing-read "Timestamp format: " timestamps nil nil nil 'logview--timestamp-format-history))))
-      (setq timestamp-definition (catch 'found
-                                   (logview--iterate-split-alists (lambda (name definition)
-                                                                    (when (string= timestamp name)
-                                                                      (throw 'found definition)))
-                                                                  logview-additional-timestamp-formats logview-std-timestamp-formats)
-                                   ;; Unlike with submodes, allow unrecognized timestamps.
-                                   `(,timestamp (java-pattern . ,timestamp)))))
+      (setq timestamp-definition (or (logview--get-split-alists timestamp nil logview-additional-timestamp-formats logview-std-timestamp-formats)
+                                     ;; Unlike with submodes, allow unrecognized timestamps.
+                                     `(,timestamp (java-pattern . ,timestamp)))))
     (catch 'success
       (logview--initialize-submode submode submode-definition (list timestamp-definition))
       ;; This must not happen.
@@ -2449,12 +2439,15 @@ next line, which is usually one line beyond END."
             (puthash alias t seen)))))))
 
 (defun logview--get-split-alists (key type &rest alists)
+  ;; If nothing is found: if TYPE is nil, just return nil, else signal
+  ;; a user error with TYPE as missing thing description.
   (catch 'found
     (apply 'logview--iterate-split-alists (lambda (name value)
                                             (when (or (equal name key) (member key (cdr (assq 'aliases value))))
                                               (throw 'found value)))
            alists)
-    (user-error "Unknown %s '%s'" type key)))
+    (when type
+      (user-error "Unknown %s '%s'" type key))))
 
 (defun logview--views ()
   "Return the list of all defined views.
