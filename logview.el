@@ -7,7 +7,7 @@
 ;; Version:    0.8.1
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "24.1") (datetime "0.2"))
+;; Package-Requires: ((emacs "24.1") (datetime "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -77,20 +77,22 @@ This alist value is used as the fallback for customizable
 `logview-additional-level-mappings'.")
 
 (defvar logview-std-timestamp-formats
-  ;; General notices: we silently handle both common decimal
-  ;; separators (dot and comma).  In several cases there is optional
-  ;; space if the day/hour number is single-digit.
   (let (formats)
-    (dolist (data '(("ISO 8601 datetime + millis"  "yyyy-MM-dd HH:mm:ss.SSS")
-                    ("ISO 8601 datetime + micros"  "yyyy-MM-dd HH:mm:ss.SSSSSS")
-                    ("ISO 8601 datetime"           "yyyy-MM-dd HH:mm:ss")
-                    ("ISO 8601 time only + millis" "HH:mm:ss.SSS")
-                    ("ISO 8601 time only + micros" "HH:mm:ss.SSSSSS")
-                    ("ISO 8601 time only"          "HH:mm:ss")
-                    (nil                           "MMM d HH:mm:ss")
-                    (nil                           "MMM d h:mm:ss a")
-                    (nil                           "h:mm:ss a")))
+    (dolist (data '(("ISO 8601 datetime + millis"             "yyyy-MM-dd HH:mm:ss.SSS")
+                    ("ISO 8601 datetime + micros"             "yyyy-MM-dd HH:mm:ss.SSSSSS")
+                    ("ISO 8601 datetime"                      "yyyy-MM-dd HH:mm:ss")
+                    ("ISO 8601 datetime (with 'T') + millis"  "yyyy-MM-dd'T'HH:mm:ss.SSS")
+                    ("ISO 8601 datetime (with 'T') + micros"  "yyyy-MM-dd'T'HH:mm:ss.SSSSSS")
+                    ("ISO 8601 datetime (with 'T')"           "yyyy-MM-dd'T'HH:mm:ss")
+                    ("ISO 8601 time only + millis"            "HH:mm:ss.SSS")
+                    ("ISO 8601 time only + micros"            "HH:mm:ss.SSSSSS")
+                    ("ISO 8601 time only"                     "HH:mm:ss")
+                    (nil                                      "MMM d HH:mm:ss")
+                    (nil                                      "MMM d h:mm:ss a")
+                    (nil                                      "h:mm:ss a")))
       (push (list (or (car data) (cadr data)) (cons 'java-pattern (cadr data))) formats)
+      (when (string-match "\\." (cadr data))
+        (nconc (car formats) '((datetime-options :any-decimal-separator t))))
       (when (car data)
         (nconc (car formats) (list (list 'aliases (cadr data))))))
     (nreverse formats))
@@ -281,9 +283,10 @@ work just as the name."
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
                               (set :inline t
-                                   (cons :tag "" (const :tag "Java pattern:"       java-pattern) string)
-                                   (cons :tag "" (const :tag "Locale:"             locale)       symbol)
-                                   (cons :tag "" (const :tag "Regular expression:" regexp)       regexp)
+                                   (cons :tag "" (const :tag "Java pattern:"       java-pattern)     string)
+                                   (cons :tag "" (const :tag "Locale:"             locale)           symbol)
+                                   (cons :tag "" (const :tag "Datetime options:"   datetime-options) plist)
+                                   (cons :tag "" (const :tag "Regular expression:" regexp)           regexp)
                                    (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
   :set   'logview--set-submode-affecting-variable)
 
@@ -1900,7 +1903,8 @@ returns non-nil."
                (timestamp-regexp  (if timestamp-pattern
                                       (condition-case error
                                           (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
-                                                 :locale (cdr (assq 'locale timestamp-option)) logview--datetime-options)
+                                                 :locale (cdr (assq 'locale timestamp-option))
+                                                 (append (cdr (assq 'datetime-options timestamp-option)) logview--datetime-options))
                                         ;; 'datetime' doesn't mention the erroneous pattern to keep
                                         ;; the error message concise.  Let's do it ourselves.
                                         (error (warn "In Java timestamp pattern '%s': %s"
