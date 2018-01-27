@@ -1,0 +1,18 @@
+language: emacs-lisp
+
+before_install:
+  # For Emacs 25.
+  - sudo add-apt-repository ppa:kelleyk/emacs -y
+  # For snapshot builds.
+  - sudo add-apt-repository ppa:ubuntu-elisp/ppa -y
+  - sudo apt-get update -q
+  - sudo apt-get install -q -y ${EMACS}
+
+env:
+  - EMACS=emacs25
+  - EMACS=emacs-snapshot
+
+script:
+  - echo "(add-to-list 'package-archives '(\"melpa\" . \"http://stable.melpa.org/packages/\") t)" >> ./local-environment.el
+  - echo "(unless (require 'datetime nil t) (package-install 'datetime))"                         >> ./local-environment.el
+  - ./run-tests.sh

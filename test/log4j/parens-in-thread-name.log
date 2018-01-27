@@ -1,0 +1,2 @@
+2010-03-10 20:03:44.332 [thread[1]] INFO my.Class - message 1
+2010-03-10 20:03:44.336 [thread(1)] INFO my.Class - message 2
