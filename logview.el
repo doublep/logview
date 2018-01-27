@@ -1,6 +1,6 @@
 ;;; logview.el --- Major mode for viewing log files  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015-2017 Paul Pogonyshev
+;; Copyright (C) 2015-2018 Paul Pogonyshev
 
 ;; Author:     Paul Pogonyshev <pogonyshev@gmail.com>
 ;; Maintainer: Paul Pogonyshev <pogonyshev@gmail.com>
@@ -35,7 +35,8 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'cl-lib)
+                   (require 'help-mode))
 (require 'datetime)
 
 ;; We _append_ self to the list of mode rules so as to not clobber
@@ -1666,21 +1667,22 @@ These are:
 
 (defun logview--help-format-keys (entry &optional preferred-keys width)
   (if (listp entry)
-      (let ((strings))
+      (let (strings)
         (dolist (symbol entry)
           (when (symbolp symbol)
             (let ((best-length most-positive-fixnum)
-                  (matched-preferred-keys)
-                  (keys))
+                  best-matches-preferred-keys
+                  keys)
               (dolist (alternative (where-is-internal symbol logview-mode-map))
-                (setq alternative            (key-description alternative)
-                      matches-preferred-keys (when preferred-keys (string-match preferred-keys alternative)))
-                (when (or (< (length alternative) best-length)
-                          (and (= (length alternative) best-length)
-                               matches-preferred-keys
-                               (not matched-preferred-keys)))
-                  (setq keys        alternative
-                        best-length (length keys))))
+                (setq alternative (key-description alternative))
+                (let ((matches-preferred-keys (when preferred-keys (string-match preferred-keys alternative))))
+                  (when (or (< (length alternative) best-length)
+                            (and (= (length alternative) best-length)
+                                 matches-preferred-keys
+                                 (not best-matches-preferred-keys)))
+                    (setq keys                        alternative
+                          best-length                 (length keys)
+                          best-matches-preferred-keys matches-preferred-keys))))
               (push (if keys (propertize keys 'face 'font-lock-builtin-face) "") strings))))
         (let ((string (mapconcat 'identity (nreverse strings) " / ")))
           (if width
