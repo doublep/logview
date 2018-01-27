@@ -836,6 +836,8 @@ equal to `next-line'.  However, if messages span several lines,
 the function will have significantly different effect."
   (interactive "p")
   (logview--assert)
+  (unless n
+    (setq n 1))
   (when (/= n 0)
     (let ((case-fold-search nil)
           (original-point   (point))
@@ -868,6 +870,8 @@ Point is positioned at the beginning of the message of the
 resulting entry."
   (interactive "p")
   (logview--assert 'level)
+  (unless n
+    (setq n 1))
   (when (/= n 0)
     (let ((case-fold-search nil)
           (original-point   (point)))
@@ -1381,6 +1385,8 @@ region instead (i.e. just like `logview-hide-region-entries')."
   (if (eq n 'use-region)
       (logview-hide-region-entries (point) (mark))
     (logview--assert)
+    (unless n
+      (setq n 1))
     (logview--std-matching-and-altering
       (logview--maybe-complain-about-movement
        n (logview--iterate-successive-entries n (logview--hide-entry-callback 'logview-hidden-entry) t) 0))))
@@ -1415,6 +1421,8 @@ entries in the region instead (i.e. work just like
   (if (eq n 'use-region)
       (logview-show-region-entries (point) (mark))
     (logview--assert)
+    (unless n
+      (setq n 1))
     ;; Much like 'logview--iterate-successive-entries', but because of
     ;; peculiar semantics, not broken out into its own function.
     (when (/= n 0)
