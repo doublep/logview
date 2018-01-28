@@ -24,6 +24,9 @@
 (defvar logview--test-directory (file-name-directory (or load-file-name (buffer-file-name))))
 
 
+(defun logview--test-display-warning-advice (&rest arguments)
+  (error "Warning elevated to an error: %S" arguments))
+
 (defmacro logview--test-with-file (filename &rest body)
   (declare (debug (form body))
            (indent 1))
@@ -37,10 +40,13 @@
         (push (list (car customizable) (macroexp-quote (eval (car (get (car customizable) 'standard-value)) t))) erase-customizations)))
     `(let (,@erase-customizations
            (inhibit-message t))
-       (with-temp-buffer
-         (insert-file (expand-file-name ,filename logview--test-directory))
-         (logview-mode)
-         ,@body))))
+       (advice-add 'display-warning :override #'logview--test-display-warning-advice)
+       (unwind-protect
+           (with-temp-buffer
+             (insert-file (expand-file-name ,filename logview--test-directory))
+             (logview-mode)
+             ,@body)
+         (advice-remove 'display-warning #'logview--test-display-warning-advice)))))
 
 
 (ert-deftest logview-test-log4j-standard-1 ()
