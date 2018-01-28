@@ -1,6 +1,8 @@
 language: emacs-lisp
 
 before_install:
+  # For Emacs 24 (deprecated PPA, but used only for Emacs 24).
+  - sudo add-apt-repository ppa:cassou/emacs -y
   # For Emacs 25.
   - sudo add-apt-repository ppa:kelleyk/emacs -y
   # For snapshot builds.
@@ -9,6 +11,7 @@ before_install:
   - sudo apt-get install -q -y ${EMACS}
 
 env:
+  - EMACS=emacs24
   - EMACS=emacs25
   - EMACS=emacs-snapshot
 

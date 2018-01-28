@@ -37,7 +37,7 @@
   (let (erase-customizations)
     (dolist (customizable (custom-group-members 'logview nil))
       (when (eq (cadr customizable) 'custom-variable)
-        (push (list (car customizable) (macroexp-quote (eval (car (get (car customizable) 'standard-value)) t))) erase-customizations)))
+        (push (list (car customizable) (list 'quote (eval (car (get (car customizable) 'standard-value)) t))) erase-customizations)))
     `(let (,@erase-customizations
            (inhibit-message t))
        (advice-add 'display-warning :override #'logview--test-display-warning-advice)
