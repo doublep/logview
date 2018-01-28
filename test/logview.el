@@ -40,13 +40,17 @@
         (push (list (car customizable) (list 'quote (eval (car (get (car customizable) 'standard-value)) t))) erase-customizations)))
     `(let (,@erase-customizations
            (inhibit-message t))
-       (advice-add 'display-warning :override #'logview--test-display-warning-advice)
+       ;; Not available on older 24.x versions.  Don't care enough to
+       ;; rewrite differently.
+       (when (fboundp 'advice-add)
+         (advice-add 'display-warning :override #'logview--test-display-warning-advice))
        (unwind-protect
            (with-temp-buffer
              (insert-file (expand-file-name ,filename logview--test-directory))
              (logview-mode)
              ,@body)
-         (advice-remove 'display-warning #'logview--test-display-warning-advice)))))
+         (when (fboundp 'advice-add)
+           (advice-remove 'display-warning #'logview--test-display-warning-advice))))))
 
 
 (ert-deftest logview-test-log4j-standard-1 ()
