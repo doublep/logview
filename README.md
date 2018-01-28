@@ -2,6 +2,7 @@
 [![GitHub release](https://img.shields.io/github/release/doublep/logview.svg?maxAge=86400)](https://github.com/doublep/logview/releases)
 [![MELPA Stable](http://stable.melpa.org/packages/logview-badge.svg)](http://stable.melpa.org/#/logview)
 [![MELPA](http://melpa.org/packages/logview-badge.svg)](http://melpa.org/#/logview)
+[![Build Status](https://secure.travis-ci.org/doublep/logview.png)](http://travis-ci.org/doublep/logview)
 
 
 # Logview mode
