@@ -7,7 +7,7 @@
 ;; Version:    0.8.2
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "24.1") (datetime "0.3"))
+;; Package-Requires: ((emacs "24.4") (datetime "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
