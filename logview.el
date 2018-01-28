@@ -219,8 +219,8 @@ looks like this:
         Error levels:        ERROR
         Warning levels:      WARN
         Information levels:  INFO
-        Trace levels:        TRACE
         Debug levels:        DEBUG
+        Trace levels:        TRACE
 
 This is not a coincidence, as the mode is primarily targeted at
 SLF4J log files.
@@ -231,8 +231,8 @@ complicated:
         Error levels:        SEVERE
         Warning levels:      WARNING
         Information levels:  INFO
-        Trace levels:        CONFIG, FINE
-        Debug levels:        FINER, FINEST
+        Debug levels:        CONFIG, FINE
+        Trace levels:        FINER, FINEST
 
 JUL has seven severity levels and we need to map them to five the
 mode supports.  So the last two lists contain two levels each.
