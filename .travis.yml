@@ -14,5 +14,6 @@ env:
 
 script:
   - echo "(add-to-list 'package-archives '(\"melpa\" . \"http://stable.melpa.org/packages/\") t)" >> ./local-environment.el
+  - echo "(package-refresh-contents)"                                                             >> ./local-environment.el
   - echo "(unless (require 'datetime nil t) (package-install 'datetime))"                         >> ./local-environment.el
   - ./run-tests.sh
