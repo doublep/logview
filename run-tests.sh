@@ -36,9 +36,10 @@ $EMACS --batch                                                                  
        --load test/logview.el                                                                                                \
        --eval "(ert-run-tests-batch-and-exit (quote ${ERT_SELECTOR}))"
 
+# Fuck Emacs 24, I'm tired of fighting warnings on it.
 $EMACS --batch                                                                                                               \
        --eval "(progn (require 'package) (package-initialize))"                                                              \
        --directory "$OWN_DIRECTORY"                                                                                          \
        --eval "(when (locate-file \"local-environment.el\" (list (car load-path))) (load \"local-environment.el\" nil t t))" \
-       --eval "(setq byte-compile-error-on-warn t)"                                                                          \
+       --eval "(when (>= emacs-major-version 25) (setq byte-compile-error-on-warn t))"                                       \
        --eval "(batch-byte-compile)" logview.el

@@ -2,7 +2,7 @@ language: emacs-lisp
 
 before_install:
   # For Emacs 24.
-  - sudo add-apt-repository ppa:jonathonf/emacs24 -y
+  - sudo add-apt-repository ppa:fryda.tomas/emacs -y
   # For Emacs 25.
   - sudo add-apt-repository ppa:kelleyk/emacs -y
   # For snapshot builds.

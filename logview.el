@@ -1992,8 +1992,10 @@ returns non-nil."
       (maphash (lambda (regexp key)
                  (push `(,(car key) (regexp . ,regexp)) logview--all-timestamp-formats-cache))
                uniques)
-      (let ((inhibit-message t))
-        (message "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time)))))
+      ;; No such variable present on old Emacses, just don't print anything.
+      (when (boundp 'inhibit-message)
+        (let ((inhibit-message t))
+          (message "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time))))))
   logview--all-timestamp-formats-cache)
 
 
