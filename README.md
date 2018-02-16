@@ -203,6 +203,7 @@ changed in each individual buffer.
 
 #### Miscellaneous
 
+* Pulse (briefly highlight) the current log entry: `SPC`
 * Manually choose appropriate submode and timestamp format: `o s` or `C-c C-c`
 * Customize options that affect submode selection: `o S` or `C-c C-s`
 * Bury buffer: `q`

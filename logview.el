@@ -347,6 +347,15 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :group 'logview
   :type  'boolean)
 
+(defcustom logview-pulse-entries '(navigation-view)
+  "When to briefly highlight the current entry.
+You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
+  :group 'logview
+  :type  '(set :inline t
+               (const :tag "After navigating a view with `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' or `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]'" navigation-view)
+               (const :tag "After navigating within the current entry with `\\<logview-mode-map>\\[logview-go-to-message-beginning]'" message-beginning)
+               (const :tag "After other entry movement commands" movement)))
+
 (defcustom logview-views-file (locate-user-emacs-file "logview.views")
   "Simple text file in which defined views are stored."
   :group 'logview
@@ -440,6 +449,16 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
 (defface logview-thread
   '((t :inherit font-lock-variable-name-face))
   "Face to use for logger thread."
+  :group 'logview-faces)
+
+(defface logview-pulse
+  '((((background dark))
+     :background "#606000")
+    (t
+     :background "#c0c0ff"))
+  "Face to briefly highlight entries to draw attention.
+Variable `logview-pulse-entries' controls in which situations
+this face is used."
   :group 'logview-faces)
 
 (defface logview-edit-filters-type-prefix
@@ -619,6 +638,7 @@ Levels are ordered least to most important.")
      (logview-toggle-show-ellipses                                           "Toggle ‘show ellipses’")
      "Options can be customized globally or changed in each buffer.")
     ("Miscellaneous"
+     (logview-pulse-current-entry                                            "Briefly highlight the current entry")
      (logview-choose-submode                                                 "Manually choose appropriate submode")
      (logview-customize-submode-options                                      "Customize options that affect submode selection")
      (bury-buffer                                                            "Bury buffer")
@@ -761,6 +781,7 @@ that the line is not the first in the buffer."
                        ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
+                       ("SPC" logview-pulse-current-entry)
                        ("?"   logview-mode-help)
                        ("g"   logview-refresh-buffer-as-needed)
                        ("x"   logview-append-log-file-tail)
@@ -832,7 +853,9 @@ Transient Mark mode also activate the region."
           (push-mark (logview--linefeed-back (if (equal (logview--match-successive-entries 1) 0)
                                                  (match-beginning 0)
                                                (point-max)))
-                     t t))))))
+                     t t)))
+      (unless (and select-message transient-mark-mode)
+        (logview--maybe-pulse-current-entry 'message-beginning)))))
 
 (defun logview-next-entry (&optional n)
   "Move point vertically down N (1 by default) log entries.
@@ -850,6 +873,7 @@ the function will have significantly different effect."
           (original-point   (point))
           (remaining        (logview--match-successive-entries n t)))
       (goto-char (if remaining (match-end 0) original-point))
+      (logview--maybe-pulse-current-entry 'movement)
       (logview--maybe-complain-about-movement n remaining))))
 
 (defun logview-previous-entry (&optional n)
@@ -896,6 +920,7 @@ resulting entry."
                         n t (lambda ()
                               (member (match-string logview--level-group) logview--as-important-levels)))))
         (goto-char (if remaining (match-end 0) original-point))
+        (logview--maybe-pulse-current-entry 'movement)
         (logview--maybe-complain-about-movement n remaining 'as-important)))))
 
 (defun logview-previous-as-important-entry (&optional n)
@@ -985,6 +1010,7 @@ command `\\<logview-mode-map>\\[logview-set-navigation-view]' to change that lat
                                                        (funcall message-filter (buffer-substring-no-properties message-begin message-end)))))
                                        (set-match-data match-data-storage)))))))))))))
       (goto-char (if remaining (match-end 0) original-point))
+      (logview--maybe-pulse-current-entry 'navigation-view)
       (logview--maybe-complain-about-movement n remaining logview--navigation-view-name))))
 
 (defun logview-previous-navigation-view-entry (&optional n set-view-if-needed)
@@ -1010,7 +1036,8 @@ Otherwise this function is similar to `beginning-of-buffer'."
   (goto-char (point-min))
   (let ((case-fold-search nil))
     (when (logview--match-current-entry)
-      (goto-char (match-end 0)))))
+      (goto-char (match-end 0))
+      (logview--maybe-pulse-current-entry 'movement))))
 
 (defun logview-last-entry ()
   "Move point to the last log entry.
@@ -1025,7 +1052,8 @@ different from `end-of-buffer'."
   (goto-char (point-max))
   (let ((case-fold-search nil))
     (when (logview--match-current-entry)
-      (goto-char (match-end 0)))))
+      (goto-char (match-end 0))
+      (logview--maybe-pulse-current-entry 'movement))))
 
 
 
@@ -1731,6 +1759,10 @@ These are:
 
 ;;; Miscellaneous commands.
 
+(defun logview-pulse-current-entry ()
+  (interactive)
+  (logview--maybe-pulse-current-entry))
+
 (defun logview-mode-help ()
   (interactive)
   ;; Just reinitialize the buffer every time to simplify development.
@@ -2232,6 +2264,18 @@ See `logview--iterate-entries-forward' for details."
                                         (funcall callback begin after-first-line end)
                                         (< end limit))
                                       only-visible validator)))
+
+
+(defun logview--maybe-pulse-current-entry (&optional why)
+  (when (or (null why) (memq why logview-pulse-entries))
+    (save-match-data
+      (save-excursion
+        (when (logview--match-current-entry)
+          (pulse-momentary-highlight-region (match-beginning 0)
+                                            (if (equal (logview--match-successive-entries 1) 0)
+                                                (match-beginning 0)
+                                              (point-max))
+                                            'logview-pulse))))))
 
 
 (defun logview--update-mode-name ()
