@@ -104,7 +104,8 @@ active again.
 * All standard Emacs commands
 * Move to the beginning of entry’s message: `TAB`
 * Move to next / previous entry: `n` / `p`
-* Move to next / previous ‘as important’ [*] entry: `N` / `P` 
+* Move to next / previous ‘as important’ [*] entry: `N` / `P`
+* Move to next / previous entry in the navigation view: `M-n` / `M-p`
 * Move to first / last entry: `<` / `>`
 
 [*] ‘As important’ means entries with the same or higher level.  For
@@ -137,7 +138,6 @@ of any additional text filters.
 * Always show all levels except trace: `L 4` or `L d`
 * Disable ‘always show’ feature: `L L` or `L 0`
 
-
 #### Filtering by entry’s logger name, thread or message
 
 See [more detailed description below](#filters-explained).
@@ -161,6 +161,7 @@ See [more detailed description below](#filters-explained).
 See [more detailed description below](#views-explained).
 
 * Switch to a view: `v`
+* Choose navigation view (for `M-n` and `M-p`): `V n`
 * Save the current filters as a view for this submode: `V s`
 * Save the current filters as a global view: `V S`
 * Edit submode views: `V e` (pops up a separate buffer)
@@ -329,3 +330,10 @@ kinds.  Most often you need submode-specific views, because text
 filters usually can’t be meaningfully applied without changes to
 different programs.  When you use `v` command, only the views for the
 current submode plus any global views are available for selection.
+
+In addition to applying view filters, it is also possible to move
+between entries in a view without activating it.  For this, define a
+view and then set it as as a ‘navigation view’ with `V n` command.
+After this, use commands `M-n` and `M-p` to quickly navigate forward
+and backward.  Remember that these commands skip all hidden entries,
+whether because of your main view (or filters) or manual entry hiding.

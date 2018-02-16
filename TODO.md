@@ -6,10 +6,9 @@
 
 ## Other ideas
 
-* More movement commands: move inside the same thread, move across
-  entries of some view without activating it.  This is not so
-  difficult to implement, but requires pondering on how to make the
-  commands comfortable to use.
+* Yet more movement commands, e.g. move inside the same thread.  This
+  is not so difficult to implement, but requires pondering on how to
+  make the commands comfortable to use.
 
 * Idle buffer parsing/filtering, otherwise mode is semi-useless in
   huge logs.
