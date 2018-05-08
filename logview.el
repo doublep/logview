@@ -2257,10 +2257,10 @@ See `logview--iterate-entries-forward' for details."
   (logview--retire-hiding-symbol 'logview--filtered-symbol)
   (logview--update-invisibility-spec)
   (logview--std-temporarily-widening
-    (if (fboundp 'font-lock-flush)
-        (with-no-warnings (font-lock-flush))
-      ;; Emacs 24 doesn't have `font-lock-flush'.
-      (font-lock-fontify-buffer))))
+    (with-no-warnings (if (fboundp 'font-lock-flush)
+                          (font-lock-flush)
+                        ;; Emacs 24 doesn't have `font-lock-flush'.
+                        (font-lock-fontify-buffer)))))
 
 
 (defun logview--maybe-pulse-current-entry (&optional why)
