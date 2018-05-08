@@ -10,9 +10,6 @@
   is not so difficult to implement, but requires pondering on how to
   make the commands comfortable to use.
 
-* Idle buffer parsing/filtering, otherwise mode is semi-useless in
-  huge logs.
-
 * Undo/redo for various filtering and explicit hiding operations.
 
 * Context when filtering (like grep -C): optionally show N entries
@@ -33,6 +30,3 @@
 * Add a command to find big gaps in timestamps.  Alternatively or in
   addition to the requested jumping, it could also be used to define
   sections.  See https://github.com/doublep/logview/issues/5
-
-* Maybe optionally highlight the current entry?  Though we already use
-  background color heavily.
