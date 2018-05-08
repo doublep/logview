@@ -1617,7 +1617,7 @@ for how toggling works."
             (logview--update-entry-invisibility start details-start (logview--entry-end entry start)
                                                 'propagate 'propagate (if (eq arg 'toggle)
                                                                           (not (memq logview--hidden-details-symbol (get-text-property details-start 'invisible)))
-                                                                        (> (prefix-numeric-value arg 0))))))))))
+                                                                        (> (prefix-numeric-value arg) 0)))))))))
 
 (defun logview-toggle-region-entry-details (begin end &optional arg interactive)
   "Toggle whether details in the region are shown.
