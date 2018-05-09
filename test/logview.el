@@ -68,3 +68,20 @@
     ;; Make sure that the second line is also recognized as an entry.
     ;; If it isn't, this will signal an error.
     (logview-next-entry)))
+
+(ert-deftest logview-test-go-to-message-beginning-1 ()
+  (logview--test-with-file "log4j/navigation-1.log"
+    (should (equal logview--submode-name "SLF4J"))
+    (forward-line 2)
+    (logview-go-to-message-beginning)
+    (should (looking-at "message 3$"))))
+
+(ert-deftest logview-test-go-to-message-beginning-2 ()
+  (logview--test-with-file "log4j/navigation-1.log"
+    (should (equal logview--submode-name "SLF4J"))
+    (transient-mark-mode 1)
+    (forward-line 2)
+    (logview-go-to-message-beginning t)
+    (should (looking-at "message 3$"))
+    (should (string= (buffer-substring-no-properties (region-beginning) (region-end)) "message 3"))
+    (should (use-region-p))))

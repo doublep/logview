@@ -1,0 +1,15 @@
+2010-01-01 01:01:01.111 [thread 1] INFO class1 - message 1
+2010-01-01 01:01:01.111 [thread 1] DEBUG class1 - message 2
+2010-01-01 01:01:01.111 [thread 1] DEBUG class1 - message 3
+2010-01-01 01:01:01.111 [thread 1] TRACE class1 - message 4
+trace details, line 1
+trace details, line 2
+trace details, line 3
+2010-01-01 01:01:01.111 [thread 1] INFO class1 - message 5
+2010-01-01 01:01:01.111 [thread 1] WARN class1 - message 6
+warning details
+2010-01-01 01:01:01.111 [thread 1] DEBUG class1 - message 7
+2010-01-01 01:01:01.111 [thread 1] DEBUG class1 - message 8
+2010-01-01 01:01:01.111 [thread 1] INFO class1 - message 9
+2010-01-01 01:01:01.111 [thread 1] ERROR class1 - message 10
+error details

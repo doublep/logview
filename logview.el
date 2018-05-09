@@ -935,7 +935,7 @@ Transient Mark mode also activate the region."
     (logview--locate-current-entry entry start
       (goto-char (logview--entry-message-start entry start))
       (when select-message
-        (push-mark (logview--entry-end entry start))))
+        (push-mark (logview--linefeed-back (logview--entry-end entry start)) t t)))
     (unless (and select-message transient-mark-mode)
       (logview--maybe-pulse-current-entry 'message-beginning))))
 
