@@ -162,6 +162,8 @@ See [more detailed description below](#views-explained).
 
 * Switch to a view: `v`
 * Choose navigation view (for `M-n` and `M-p`): `V n`
+* Select a view to highlight its entries: `V h`
+* Remove view highlighting: `V u`
 * Save the current filters as a view for this submode: `V s`
 * Save the current filters as a global view: `V S`
 * Edit submode views: `V e` (pops up a separate buffer)
@@ -338,3 +340,24 @@ view and then set it as as a ‘navigation view’ with `V n` command.
 After this, use commands `M-n` and `M-p` to quickly navigate forward
 and backward.  Remember that these commands skip all hidden entries,
 whether because of your main view (or filters) or manual entry hiding.
+
+Finally, you can highlight all entries in a view, or, more precisely,
+those that are visible currently.  This can be done with `V h`
+command.  Cancel this by highlighting entries from a different view or
+removing highlighting altogether with `V u`.
+
+To summarize:
+
+* You can have any number of named views.  Their definitions are
+  stored permanently across Emacs session and are available from all
+  Logview buffers.
+
+* At any time you can switch to a view, i.e. replace current filters
+  with those stored in the view’s definition.  Changing filters itself
+  doesn’t alter any view definitions.
+
+* You can choose one navigation view, independently from the currently
+  applied view.  It is used by commands `M-n` and `M-p'.
+
+* You can highlight entries of a view, again, independently from
+  current or navigation view.

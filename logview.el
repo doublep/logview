@@ -132,6 +132,13 @@ This value is used as the fallback for customizable
       (when (and (eq major-mode 'logview-mode) (not (logview-initialized-p)))
         (logview--guess-submode)))))
 
+(defun logview--set-highlight-affecting-variable (variable value)
+  (set variable value)
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (and (eq major-mode 'logview-mode) logview--highlighted-view-name)
+        (logview--refontify-buffer)))))
+
 (defvar logview--additional-submodes-type
   (let* ((italicize      (lambda (string) (propertize string 'face 'italic)))
          (mapping-option (lambda (mapping)
@@ -362,6 +369,15 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :group 'logview
   :type  'boolean)
 
+(defcustom logview-highlighted-entry-part 'whole
+  "Which parts of an entry get highlighted with `\\<logview-mode-map>\\[logview-highlight-view-entries]'."
+  :group 'logview
+  :type  '(choice (const :tag "The whole entry"                  whole)
+                  (const :tag "Entry header (date, level, etc.)" header)
+                  (const :tag "Entry message"                    message))
+  :set   'logview--set-highlight-affecting-variable)
+
+
 (defcustom logview-pulse-entries '(navigation-view)
   "When to briefly highlight the current entry.
 You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
@@ -466,6 +482,16 @@ You can also pulse the current entry unconditionally with `\\<logview-mode-map>\
   "Face to use for logger thread."
   :group 'logview-faces)
 
+(defface logview-highlight
+  '((((background dark))
+     :background "#8030e0")
+    (t
+     :background "#f8d0ff"))
+  "Face to highlight entries of a view chosen with `\\<logview-mode-map>\\[logview-highlight-view-entries]'.
+Variable `logview-highlighted-entry-part' controls how exactly
+this face is applied."
+  :group 'logview-faces)
+
 (defface logview-pulse
   '((((background dark))
      :background "#606000")
@@ -564,7 +590,9 @@ this face is used."
 
 (defvar logview--view-name-history)
 
-(defvar-local logview--navigation-view-name nil)
+(defvar-local logview--navigation-view-name  nil)
+(defvar-local logview--highlighted-view-name nil)
+(defvar-local logview--highlighted-filter    nil)
 
 (defvar-local logview--filter-editing-buffer nil)
 (defvar logview--view-editing-buffer         nil)
@@ -631,6 +659,8 @@ this face is used."
     ("Views"
      (logview-switch-to-view                                                 "Switch to a view")
      (logview-set-navigation-view                                            "Choose a view for navigation")
+     (logview-highlight-view-entries                                         "Select a view to highlight its entries")
+     (logview-unhighlight-view-entries                                       "Remove view highlighting")
      (logview-save-filters-as-view-for-submode                               "Save the filters as a view for the current submode")
      (logview-save-filters-as-global-view                                    "Save the filters as a globally available view")
      (logview-edit-submode-views                                             "Edit views for the current submode")
@@ -762,7 +792,7 @@ this face is used."
 ;; that _preceeds_ the entry, otherwise ellipses show at line
 ;; beginnings, which is ugly and shifts actual buffer text.
 
-(defsubst logview--linefeed-back-checked (position)
+(defsubst logview--character-back-checked (position)
   "Return end of previous line.
 This function assumes POSITION is at the beginning of a line.  If
 this is the first line, don't change POSITION."
@@ -770,11 +800,16 @@ this is the first line, don't change POSITION."
       (1- position)
     1))
 
-(defsubst logview--linefeed-back (position)
+(defsubst logview--character-back (position)
   "Return end of previous line assumin non-first line.
 This function assumes POSITION is at the beginning of a line and
 that the line is not the first in the buffer."
   (1- position))
+
+(defsubst logview--space-back (position)
+  (if (eq (get-char-code-property (char-before position) 'general-category) 'Zs)
+      (1- position)
+    position))
 
 
 
@@ -840,6 +875,8 @@ that the line is not the first in the buffer."
                        ;; View commands.
                        ("v"   logview-switch-to-view)
                        ("V n" logview-set-navigation-view)
+                       ("V h" logview-highlight-view-entries)
+                       ("V u" logview-unhighlight-view-entries)
                        ("V s" logview-save-filters-as-view-for-submode)
                        ("V S" logview-save-filters-as-global-view)
                        ("V e" logview-edit-submode-views)
@@ -935,7 +972,7 @@ Transient Mark mode also activate the region."
     (logview--locate-current-entry entry start
       (goto-char (logview--entry-message-start entry start))
       (when select-message
-        (push-mark (logview--linefeed-back (logview--entry-end entry start)) t t)))
+        (push-mark (logview--character-back (logview--entry-end entry start)) t t)))
     (unless (and select-message transient-mark-mode)
       (logview--maybe-pulse-current-entry 'message-beginning))))
 
@@ -1015,11 +1052,10 @@ command `\\<logview-mode-map>\\[logview-set-navigation-view]' to change that lat
   (interactive "p\np")
   (logview--assert)
   (when set-view-if-needed
-    (condition-case nil
-        (logview--find-view logview--navigation-view-name)
-      (error (setq logview--navigation-view-name
-                   (logview--choose-view (substitute-command-keys
-                                          "Navigate through view (change with `\\[logview-set-navigation-view]'): "))))))
+    (unless (logview--find-view logview--navigation-view-name t)
+      (setq logview--navigation-view-name
+            (logview--choose-view (substitute-command-keys
+                                   "Navigate through view (change with `\\[logview-set-navigation-view]'): ")))))
   (unless n
     (setq n 1))
   (logview--std-temporarily-widening
@@ -1399,6 +1435,17 @@ you can use `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' and `\\
   (interactive (list (logview--choose-view "Navigate through view: ")))
   (setq logview--navigation-view-name (plist-get (logview--find-view view) :name)))
 
+(defun logview-highlight-view-entries (view)
+  "Set a view to be used for entry highlighting.
+Interactively, read the view name from the minibuffer."
+  (interactive (list (logview--choose-view "Highlight entries of a view: ")))
+  (logview--do-highlight-view-entries (plist-get (logview--find-view view) :name)))
+
+(defun logview-unhighlight-view-entries ()
+  (interactive)
+  (setq logview--highlighted-view-name nil)
+  (logview--do-highlight-view-entries nil))
+
 (defun logview-save-filters-as-view-for-submode (name)
   "Save the current filter set as a view for the current submode.
 Interactively, read the name for the new view from the
@@ -1429,6 +1476,7 @@ Interactively, read the view name from the minibuffer."
   (interactive (list (logview--choose-view "Delete view: ")))
   (setq logview--views             (delq (logview--find-view view) (logview--views))
         logview--views-need-saving t)
+  (logview--after-updating-view-definitions)
   (logview--update-mode-name))
 
 (defun logview--choose-view (prompt)
@@ -1466,6 +1514,7 @@ Interactively, read the view name from the minibuffer."
         (plist-put (car new-views) :submode logview--submode-name))
       (setq logview--views             (nreverse new-views)
             logview--views-need-saving t)
+      (logview--after-updating-view-definitions)
       (logview--update-mode-name)
       (message (if global "Saved filters as a global view named `%s'" "Saved filters as a submode view named `%s'") name))))
 
@@ -2257,6 +2306,9 @@ See `logview--iterate-entries-forward' for details."
 (defun logview--refilter ()
   (logview--retire-hiding-symbol 'logview--filtered-symbol)
   (logview--update-invisibility-spec)
+  (logview--refontify-buffer))
+
+(defun logview--refontify-buffer ()
   (logview--std-temporarily-widening
     (with-no-warnings (if (fboundp 'font-lock-flush)
                           (font-lock-flush)
@@ -2453,7 +2505,7 @@ next line, which is usually one line beyond END."
                   (when (member type '("m+" "m-"))
                     (while (looking-at "\\.\\. ")
                       (forward-line)))
-                  (funcall callback type line-begin begin (if (bolp) (logview--linefeed-back-checked (point)) (point))))))))
+                  (funcall callback type line-begin begin (if (bolp) (logview--character-back-checked (point)) (point))))))))
 
 (defun logview--canonical-filter-text (filters)
   (let (filter-lines)
@@ -2544,7 +2596,7 @@ This list is preserved across Emacs session in
     (setq logview--views-initialized t))
   logview--views)
 
-(defun logview--find-view (view)
+(defun logview--find-view (view &optional internal)
   (if (stringp view)
       (let ((all-views (logview--views))
             result)
@@ -2555,9 +2607,10 @@ This list is preserved across Emacs session in
               (setq result    candidate
                     all-views nil))))
         (or result (error "Unknown view `%s'" view)))
-    (unless (and (listp view) (stringp (plist-get view :name)))
-      (error "Invalid view object `%S'" view))
-    view))
+    (if (and (listp view) (stringp (plist-get view :name)))
+        view
+      (unless internal
+        (error "Invalid view object `%S'" view)))))
 
 (defun logview--parse-view-definitions (&optional warn-about-garbage)
   (catch 'done
@@ -2608,6 +2661,21 @@ This list is preserved across Emacs session in
       (write-region (point-min) (point-max) logview-views-file nil 'silent)
       (setq logview--views-need-saving nil))))
 
+(defun logview--after-updating-view-definitions ()
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (and (eq major-mode 'logview-mode) logview--highlighted-view-name)
+        (logview--do-highlight-view-entries logview--highlighted-view-name)))))
+
+(defun logview--do-highlight-view-entries (view)
+  (setq view (logview--find-view view t))
+  (let ((filters (logview--do-parse-filters (plist-get view :filters))))
+    (setq logview--highlighted-view-name (plist-get view :name))
+    (unless (prog1 (equal (cdar logview--highlighted-filter) (cdar filters))
+              (setq logview--highlighted-filter filters))
+      (logview--refontify-buffer))))
+
+
 (defun logview--completing-read (&rest arguments)
   (apply (or logview-completing-read-function
              (if (and (boundp 'ido-mode) (fboundp 'ido-completing-read) ido-mode)
@@ -2654,11 +2722,13 @@ This list is preserved across Emacs session in
         (setq region-start first-entry-start)
         (logview--std-altering
           (save-match-data
-            (let ((have-timestamp (memq 'timestamp logview--submode-features))
-                  (have-level     (memq 'level     logview--submode-features))
-                  (have-name      (memq 'name      logview--submode-features))
-                  (have-thread    (memq 'thread    logview--submode-features))
-                  (validator      (cdr logview--current-filter))
+            (let ((have-timestamp   (memq 'timestamp logview--submode-features))
+                  (have-level       (memq 'level     logview--submode-features))
+                  (have-name        (memq 'name      logview--submode-features))
+                  (have-thread      (memq 'thread    logview--submode-features))
+                  (validator        (cdr logview--current-filter))
+                  (highlighter      (cdr logview--highlighted-filter))
+                  (highlighted-part logview-highlighted-entry-part)
                   found-anything-visible)
               (logview--iterate-entries-forward
                region-start
@@ -2684,7 +2754,11 @@ This list is preserved across Emacs session in
                          (when have-thread
                            (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
                                                    (logview--entry-group-end   entry start logview--thread-group)
-                                                   'logview-thread)))
+                                                   'logview-thread))
+                         (when (and highlighter (funcall highlighter entry start))
+                           (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
+                                                   (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
+                                                   'logview-highlight)))
                      (setq filtered t))
                    (when (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
                      (setq found-anything-visible t))
@@ -2700,7 +2774,7 @@ This list is preserved across Emacs session in
 
 ;; Returns non-nil if any part of the entry is visible as a result.
 (defun logview--update-entry-invisibility (start details-start end filtered entry-manually-hidden details-manually-hidden)
-  (let ((first-line-end-lf-back (logview--linefeed-back (or details-start end)))
+  (let ((first-line-end-lf-back (logview--character-back (or details-start end)))
         (invisible              (get-text-property (or details-start start) 'invisible))
         new-invisible
         fully-invisible)
@@ -2720,13 +2794,13 @@ This list is preserved across Emacs session in
       (push logview--filtered-symbol new-invisible)
       (setq fully-invisible t))
     (if new-invisible
-        (put-text-property (logview--linefeed-back-checked start) first-line-end-lf-back 'invisible (setq new-invisible (nreverse new-invisible)))
-      (remove-list-of-text-properties (logview--linefeed-back-checked start) first-line-end-lf-back '(invisible)))
+        (put-text-property (logview--character-back-checked start) first-line-end-lf-back 'invisible (setq new-invisible (nreverse new-invisible)))
+      (remove-list-of-text-properties (logview--character-back-checked start) first-line-end-lf-back '(invisible)))
     (when details-start
       (when (eq details-manually-hidden t)
         (push logview--hidden-details-symbol new-invisible))
       (push 'logview-details new-invisible)
-      (put-text-property first-line-end-lf-back (logview--linefeed-back end) 'invisible new-invisible))
+      (put-text-property first-line-end-lf-back (logview--character-back end) 'invisible new-invisible))
     (not fully-invisible)))
 
 (defun logview--buffer-substring-filter (begin end delete)
@@ -2803,7 +2877,8 @@ This list is preserved across Emacs session in
                              (push view combined-views)))
                          (setq logview--views (nreverse combined-views)))
                      (setq logview--views             new-views
-                           logview--views-need-saving t))))
+                           logview--views-need-saving t))
+                   (logview--after-updating-view-definitions)))
                (funcall do-quit)
                ;; This takes effect only after quitting.
                (logview--update-mode-name))
@@ -2887,7 +2962,7 @@ This list is preserved across Emacs session in
                       (while (let ((from (point)))
                                (put-text-property (- from 3) from 'face 'logview-edit-filters-type-prefix)
                                (forward-line)
-                               (put-text-property from (if (bolp) (logview--linefeed-back (point)) (point))
+                               (put-text-property from (if (bolp) (logview--character-back (point)) (point))
                                                   'face (unless valid 'error))
                                (when (< (point) end)
                                  (forward-char 3)
