@@ -357,7 +357,7 @@ To summarize:
   doesn’t alter any view definitions.
 
 * You can choose one navigation view, independently from the currently
-  applied view.  It is used by commands `M-n` and `M-p'.
+  applied view.  It is used by commands `M-n` and `M-p`.
 
 * You can highlight entries of a view, again, independently from
   current or navigation view.
