@@ -136,7 +136,7 @@ This value is used as the fallback for customizable
   (set variable value)
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
-      (when (and (eq major-mode 'logview-mode) logview--highlighted-view-name)
+      (when (and (eq major-mode 'logview-mode) (with-no-warnings logview--highlighted-view-name))
         (logview--refontify-buffer)))))
 
 (defvar logview--additional-submodes-type
