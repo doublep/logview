@@ -176,6 +176,7 @@ See [more detailed description below](#views-explained).
 * Hide entries in the region: `H`
 * Show some explicitly hidden entries: `s`
 * Show explicitly hidden entries in the region: `S`
+* Show all manually hidden entries in the buffer: `r h`
 
 In Transient Mark mode `h` and `s` operate on region when mark is
 active.
@@ -189,6 +190,7 @@ libraries let you write anything here.
 * Toggle details of the current entry: `d`
 * Toggle details of all entries in the region: `D`
 * Toggle details in the whole buffer: `e`
+* Show all manually hidden entry details in the buffer: `r h`
 
 In Transient Mark mode `d` operates on region when mark is active.
 

@@ -670,11 +670,13 @@ this face is used."
      (logview-hide-entry                                                     "Hide entry")
      (logview-hide-region-entries                                            "Hide entries in the region")
      (logview-show-entries                                                   "Show some explicitly hidden entries")
-     (logview-show-region-entries                                            "Show explicitly hidden entries in the region"))
+     (logview-show-region-entries                                            "Show explicitly hidden entries in the region")
+     (logview-reset-manual-entry-hiding                                      "Show all explicitly hidden entries in the buffer"))
     ("Hide or show details of individual entries"
      (logview-toggle-entry-details                                           "Toggle details of the current entry")
      (logview-toggle-region-entry-details                                    "Toggle details of entries in the region")
      (logview-toggle-details-globally                                        "Toggle details in the whole buffer")
+     (logview-reset-manual-details-hiding                                    "Show all hidden entry details in the buffer")
      "Here ‘details’ are the message lines after the first.")
     ("Change options for current buffer"
      (auto-revert-mode                                                       "Toggle Auto-Revert mode")
@@ -887,10 +889,12 @@ that the line is not the first in the buffer."
                        ("H"   logview-hide-region-entries)
                        ("s"   logview-show-entries)
                        ("S"   logview-show-region-entries)
+                       ("r h" logview-reset-manual-entry-hiding)
                        ;; Showing/hiding entry details commands.
                        ("d"   logview-toggle-entry-details)
                        ("D"   logview-toggle-region-entry-details)
                        ("e"   logview-toggle-details-globally)
+                       ("r d" logview-reset-manual-details-hiding)
                        ;; Option changing commands.
                        ("o r" auto-revert-mode)
                        ("o t" auto-revert-tail-mode)
@@ -1632,6 +1636,17 @@ any effect only once you clear or alter the responsible filters."
       (when interactive
         (setq deactivate-mark t)))))
 
+(defun logview-reset-manual-entry-hiding ()
+  "Show all manually hidden entries in the buffer.
+
+Entries currently not visible due to filtering are also cleared
+of 'manually hidden' mark.  However, such entries will remain
+invisible until filters are removed or changed appropriately."
+  (interactive)
+  (logview--assert)
+  (logview--retire-hiding-symbol 'logview--hidden-entry-symbol)
+  (logview--update-invisibility-spec))
+
 (defun logview--hide-entry-callback (entry start)
   (logview--update-entry-invisibility start (logview--entry-details-start entry start) (logview--entry-end entry start)
                                       'propagate t 'propagate))
@@ -1700,11 +1715,25 @@ well."
 (defun logview-toggle-details-globally (&optional arg)
   "Toggle whether details are shown in the whole buffer.
 If invoked with prefix argument, show details if the argument is
-positive, hide otherwise."
+positive, hide otherwise.
+
+Note that this is separate from manual detail hiding with `\\<logview-mode-map>\\[logview-toggle-entry-details]' and
+`\\<logview-mode-map>\\[logview-toggle-region-entry-details]'.  Global detail hiding takes precedence: when it is active,
+all details are hidden in the buffer.  However, when it becomes
+inactive (e.g. after toggling two times), only those details
+which haven't been manually hidden are visible."
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--toggle-option-locally 'logview--hide-all-details arg (called-interactively-p 'interactive)
                                   "All entry messages details are now hidden"
                                   "Details of entry messages are now visible unless hidden explicitly")
+  (logview--update-invisibility-spec))
+
+(defun logview-reset-manual-details-hiding ()
+  "Show all manually hidden entry details in the buffer."
+  (interactive)
+  (logview--assert)
+  (logview--retire-hiding-symbol 'logview--hidden-details-symbol)
+  (logview--toggle-option-locally 'logview--hide-all-details 0)
   (logview--update-invisibility-spec))
 
 
