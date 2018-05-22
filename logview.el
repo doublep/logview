@@ -2560,6 +2560,9 @@ next line, which is usually one line beyond END."
                     (re-search-forward  logview--entry-regexp nil t))
             (setq region-end (min region-end (1+ (buffer-size))))
             (let* ((match-data  (match-data t))
+                   ;; The following depends on exact submode format, i.e. on how many
+                   ;; groups there are in `logview--entry-regexp'.
+                   (num-points  (- (length match-data) 2))
                    (entry-start (car match-data))
                    (have-level  (memq 'level logview--submode-features)))
               (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
@@ -2570,7 +2573,7 @@ next line, which is usually one line beyond END."
                                  (logview-entry   (make-vector 12 nil)))
                             (aset logview-entry 0 (- entry-end entry-start))
                             (let ((points (cdr match-data)))
-                              (dotimes (k 9)
+                              (dotimes (k num-points)
                                 (let ((point (pop points)))
                                   (aset logview-entry (1+ k) (when point (- point entry-start))))))
                             (when (< details-start entry-end)
