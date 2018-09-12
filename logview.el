@@ -7,7 +7,7 @@
 ;; Version:    0.11.1
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "24.4") (datetime "0.3"))
+;; Package-Requires: ((emacs "24.4") (datetime "0.3") (extmap "1.0"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -53,6 +53,7 @@
 (eval-when-compile (require 'cl-lib)
                    (require 'help-mode))
 (require 'datetime)
+(require 'extmap)
 
 ;; We _append_ self to the list of mode rules so as to not clobber
 ;; other rules, as '.log' is a common file extension.  This also gives
@@ -2001,6 +2002,12 @@ returns non-nil."
 
 ;;; Internal functions (except helpers for specific command groups).
 
+(defmacro logview--internal-log (format-string &rest arguments)
+  ;; No such variable present on old Emacses, just don't print anything.
+  `(when (boundp 'inhibit-message)
+     (let ((inhibit-message t))
+       (message ,format-string ,@arguments))))
+
 (defun logview--guess-submode ()
   (save-excursion
     (save-restriction
@@ -2158,47 +2165,61 @@ returns non-nil."
 
 (defun logview--all-timestamp-formats ()
   (unless logview--all-timestamp-formats-cache
-    (let ((start-time (float-time))
-          (patterns (make-hash-table :test 'equal :size 1000))
-          (uniques  (make-hash-table :test 'equal :size 1000)))
-      (dolist (locale (datetime-list-locales t))
-        (let ((decimal-separator (char-to-string (datetime-locale-field locale :decimal-separator)))
-              last-time-pattern)
-          (dolist (time-variant '(:short :medium :long :full))
-            (let ((time-pattern (datetime-locale-time-pattern locale time-variant)))
-              (unless (string= time-pattern last-time-pattern)
-                (setq last-time-pattern time-pattern)
-                (when (and (datetime-pattern-includes-second-p 'java time-pattern)
-                           (not (datetime-pattern-includes-timezone-p 'java time-pattern)))
-                  (let (variants)
-                    (dolist (pattern (cons time-pattern
-                                           (mapcar (lambda (date-variant) (datetime-locale-date-time-pattern locale date-variant time-variant))
-                                                   '(:short :medium :long :full))))
-                      (push pattern                                                                                   variants)
-                      (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSS")    pattern t) variants)
-                      (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSSSSS") pattern t) variants))
-                    (dolist (pattern variants)
-                      (let* ((parts            (datetime-recode-pattern 'java 'parsed pattern))
-                             (locale-dependent (datetime-pattern-locale-dependent-p 'parsed parts))
-                             (key              (cons pattern (when locale-dependent locale))))
-                        (when (or locale-dependent (null (gethash key patterns)))
-                          (puthash key
-                                   (apply #'datetime-matching-regexp 'parsed parts :locale locale logview--datetime-options)
-                                   patterns)))))))))))
-      (maphash (lambda (key regexp)
-                 (let ((existing (gethash regexp uniques)))
-                   (if existing
-                       (unless (memq (cdr key) (cdr existing))
-                         (push (cdr key) (cdr existing)))
-                     (puthash regexp (cons (car key) (list (cdr key))) uniques))))
-               patterns)
-      (maphash (lambda (regexp key)
-                 (push `(,(car key) (regexp . ,regexp)) logview--all-timestamp-formats-cache))
-               uniques)
-      ;; No such variable present on old Emacses, just don't print anything.
-      (when (boundp 'inhibit-message)
-        (let ((inhibit-message t))
-          (message "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time))))))
+    ;; Since there are now really lots of locales known by `datetime', cache this value
+    ;; not only in memory, but also on disk.  We use `extmap' to create and read the cache
+    ;; file.  If `datetime' reports a different locale database version, cache is
+    ;; discarded.
+    (let* ((cache-filename          (locate-user-emacs-file "logview-cache.extmap"))
+           (cache-file              (ignore-errors (extmap-init cache-filename)))
+           (locale-database-version (if (fboundp #'datetime-locale-database-version) (datetime-locale-database-version) 0)))
+      (when cache-file
+        (let ((cached-externally (extmap-get cache-file 'timestamp-formats t)))
+          (when (and cached-externally (equal (extmap-get cache-file 'locale-database-version t) locale-database-version))
+            (setq logview--all-timestamp-formats-cache (extmap-get cache-file 'timestamp-formats t)))))
+      (if logview--all-timestamp-formats-cache
+          (logview--internal-log "Logview: loaded locale timestamp formats from `%s'" cache-filename)
+        (let ((start-time (float-time))
+              (patterns (make-hash-table :test 'equal :size 1000))
+              (uniques  (make-hash-table :test 'equal :size 1000)))
+          (dolist (locale (datetime-list-locales t))
+            (let ((decimal-separator (char-to-string (datetime-locale-field locale :decimal-separator)))
+                  last-time-pattern)
+              (dolist (time-variant '(:short :medium :long :full))
+                (let ((time-pattern (datetime-locale-time-pattern locale time-variant)))
+                  (unless (string= time-pattern last-time-pattern)
+                    (setq last-time-pattern time-pattern)
+                    (when (and (datetime-pattern-includes-second-p 'java time-pattern)
+                               (not (datetime-pattern-includes-timezone-p 'java time-pattern)))
+                      (let (variants)
+                        (dolist (pattern (cons time-pattern
+                                               (mapcar (lambda (date-variant) (datetime-locale-date-time-pattern locale date-variant time-variant))
+                                                       '(:short :medium :long :full))))
+                          (push pattern                                                                                   variants)
+                          (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSS")    pattern t) variants)
+                          (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSSSSS") pattern t) variants))
+                        (dolist (pattern variants)
+                          (let* ((parts            (datetime-recode-pattern 'java 'parsed pattern))
+                                 (locale-dependent (datetime-pattern-locale-dependent-p 'parsed parts))
+                                 (key              (cons pattern (when locale-dependent locale))))
+                            (when (or locale-dependent (null (gethash key patterns)))
+                              (puthash key
+                                       (apply #'datetime-matching-regexp 'parsed parts :locale locale logview--datetime-options)
+                                       patterns)))))))))))
+          (maphash (lambda (key regexp)
+                     (let ((existing (gethash regexp uniques)))
+                       (if existing
+                           (unless (memq (cdr key) (cdr existing))
+                             (push (cdr key) (cdr existing)))
+                         (puthash regexp (cons (car key) (list (cdr key))) uniques))))
+                   patterns)
+          (maphash (lambda (regexp key)
+                     (push `(,(car key) (regexp . ,regexp)) logview--all-timestamp-formats-cache))
+                   uniques)
+          (logview--internal-log "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time))
+          (ignore-errors
+            (extmap-from-alist cache-filename `((locale-database-version . ,locale-database-version)
+                                                (timestamp-formats       . ,logview--all-timestamp-formats-cache))
+                               :overwrite t))))))
   logview--all-timestamp-formats-cache)
 
 
