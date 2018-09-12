@@ -2739,69 +2739,70 @@ This list is preserved across Emacs session in
       (remove-list-of-text-properties region-start region-end '(logview-entry fontified)))))
 
 (defun logview--fontify-region (region-start region-end _loudly)
-  (logview--std-temporarily-widening
-    ;; We are very fast.  Don't fontify too little to avoid overhead.
-    (when (and (< region-end (point-max)) (not (get-text-property (1+ region-end) 'fontified)))
-      (let ((expanded-region-end (+ region-start logview--lazy-region-size)))
-        (when (< region-end expanded-region-end)
-          (setq region-end (or (next-single-property-change (1+ region-end) 'fontified nil expanded-region-end) expanded-region-end)))))
-    (when (and (> region-start (point-min)) (not (get-text-property (1- region-start) 'fontified)))
-      (let ((expanded-region-start (max 1 (- region-end logview--lazy-region-size))))
-        (when (> region-start expanded-region-start)
-          (setq region-start (or (previous-single-property-change (1- region-start) 'fontified nil expanded-region-start) expanded-region-start)))))
-    (let ((first-entry-start (cdr (logview--do-locate-current-entry region-start))))
-      (when first-entry-start
-        (setq region-start first-entry-start)
-        (logview--std-altering
-          (save-match-data
-            (let ((have-timestamp   (memq 'timestamp logview--submode-features))
-                  (have-level       (memq 'level     logview--submode-features))
-                  (have-name        (memq 'name      logview--submode-features))
-                  (have-thread      (memq 'thread    logview--submode-features))
-                  (validator        (cdr logview--current-filter))
-                  (highlighter      (cdr logview--highlighted-filter))
-                  (highlighted-part logview-highlighted-entry-part)
-                  found-anything-visible)
-              (logview--iterate-entries-forward
-               region-start
-               (lambda (entry start)
-                 (let ((end (logview--entry-end entry start))
-                       filtered)
-                   (if (or (null validator) (funcall validator entry start))
-                       (progn
-                         (when have-level
-                           (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
-                             (put-text-property start end 'face (car entry-faces))
-                             (add-face-text-property (logview--entry-group-start entry start logview--level-group)
-                                                     (logview--entry-group-end   entry start logview--level-group)
-                                                     (cdr entry-faces))))
-                         (when have-timestamp
-                           (add-face-text-property (logview--entry-group-start entry start logview--timestamp-group)
-                                                   (logview--entry-group-end   entry start logview--timestamp-group)
-                                                   'logview-timestamp))
-                         (when have-name
-                           (add-face-text-property (logview--entry-group-start entry start logview--name-group)
-                                                   (logview--entry-group-end   entry start logview--name-group)
-                                                   'logview-name))
-                         (when have-thread
-                           (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
-                                                   (logview--entry-group-end   entry start logview--thread-group)
-                                                   'logview-thread))
-                         (when (and highlighter (funcall highlighter entry start))
-                           (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
-                                                   (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
-                                                   'logview-highlight)))
-                     (setq filtered t))
-                   (when (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
-                     (setq found-anything-visible t))
-                   (or (< end region-end)
-                       ;; There appears to be a bug in displaying code for the unlikely case
-                       ;; that fontifying function hides all the text in the region it has
-                       ;; been called for: Emacs still displays an empty line or at least the
-                       ;; ellipses to denote hidden text (i.e. not merged with the previous
-                       ;; ellipses).  So, to avoid this bug we just continue.  Besides, font
-                       ;; lock would do this anyway.
-                       (not found-anything-visible)))))))))))
+  (when (logview-initialized-p)
+    (logview--std-temporarily-widening
+      ;; We are very fast.  Don't fontify too little to avoid overhead.
+      (when (and (< region-end (point-max)) (not (get-text-property (1+ region-end) 'fontified)))
+        (let ((expanded-region-end (+ region-start logview--lazy-region-size)))
+          (when (< region-end expanded-region-end)
+            (setq region-end (or (next-single-property-change (1+ region-end) 'fontified nil expanded-region-end) expanded-region-end)))))
+      (when (and (> region-start (point-min)) (not (get-text-property (1- region-start) 'fontified)))
+        (let ((expanded-region-start (max 1 (- region-end logview--lazy-region-size))))
+          (when (> region-start expanded-region-start)
+            (setq region-start (or (previous-single-property-change (1- region-start) 'fontified nil expanded-region-start) expanded-region-start)))))
+      (let ((first-entry-start (cdr (logview--do-locate-current-entry region-start))))
+        (when first-entry-start
+          (setq region-start first-entry-start)
+          (logview--std-altering
+            (save-match-data
+              (let ((have-timestamp   (memq 'timestamp logview--submode-features))
+                    (have-level       (memq 'level     logview--submode-features))
+                    (have-name        (memq 'name      logview--submode-features))
+                    (have-thread      (memq 'thread    logview--submode-features))
+                    (validator        (cdr logview--current-filter))
+                    (highlighter      (cdr logview--highlighted-filter))
+                    (highlighted-part logview-highlighted-entry-part)
+                    found-anything-visible)
+                (logview--iterate-entries-forward
+                 region-start
+                 (lambda (entry start)
+                   (let ((end (logview--entry-end entry start))
+                         filtered)
+                     (if (or (null validator) (funcall validator entry start))
+                         (progn
+                           (when have-level
+                             (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
+                               (put-text-property start end 'face (car entry-faces))
+                               (add-face-text-property (logview--entry-group-start entry start logview--level-group)
+                                                       (logview--entry-group-end   entry start logview--level-group)
+                                                       (cdr entry-faces))))
+                           (when have-timestamp
+                             (add-face-text-property (logview--entry-group-start entry start logview--timestamp-group)
+                                                     (logview--entry-group-end   entry start logview--timestamp-group)
+                                                     'logview-timestamp))
+                           (when have-name
+                             (add-face-text-property (logview--entry-group-start entry start logview--name-group)
+                                                     (logview--entry-group-end   entry start logview--name-group)
+                                                     'logview-name))
+                           (when have-thread
+                             (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
+                                                     (logview--entry-group-end   entry start logview--thread-group)
+                                                     'logview-thread))
+                           (when (and highlighter (funcall highlighter entry start))
+                             (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
+                                                     (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
+                                                     'logview-highlight)))
+                       (setq filtered t))
+                     (when (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
+                       (setq found-anything-visible t))
+                     (or (< end region-end)
+                         ;; There appears to be a bug in displaying code for the unlikely case
+                         ;; that fontifying function hides all the text in the region it has
+                         ;; been called for: Emacs still displays an empty line or at least the
+                         ;; ellipses to denote hidden text (i.e. not merged with the previous
+                         ;; ellipses).  So, to avoid this bug we just continue.  Besides, font
+                         ;; lock would do this anyway.
+                         (not found-anything-visible))))))))))))
   `(jit-lock-bounds ,region-start . ,region-end))
 
 ;; Returns non-nil if any part of the entry is visible as a result.
