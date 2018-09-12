@@ -2171,7 +2171,7 @@ returns non-nil."
     ;; discarded.
     (let* ((cache-filename          (locate-user-emacs-file "logview-cache.extmap"))
            (cache-file              (ignore-errors (extmap-init cache-filename)))
-           (locale-database-version (if (fboundp #'datetime-locale-database-version) (datetime-locale-database-version) 0)))
+           (locale-database-version (if (fboundp #'datetime-locale-database-version) (with-no-warnings (datetime-locale-database-version)) 0)))
       (when cache-file
         (let ((cached-externally (extmap-get cache-file 'timestamp-formats t)))
           (when (and cached-externally (equal (extmap-get cache-file 'locale-database-version t) locale-database-version))
