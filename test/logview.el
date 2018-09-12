@@ -61,7 +61,7 @@
       (should (and entry (equal start 1))))))
 
 (ert-deftest logview-test-log4j-national-timestamp-1 ()
-  (logview--test-with-file "log4j/it-1.log" ()
+  (logview--test-with-file "log4j/fr-1.log" ()
     (should (equal logview--submode-name "SLF4J"))))
 
 ;; Issue #2.
