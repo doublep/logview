@@ -1,19 +1,16 @@
 language: emacs-lisp
 
-before_install:
-  # For Emacs 24.
-  - sudo add-apt-repository ppa:fryda.tomas/emacs -y
-  # For Emacs 25.
-  - sudo add-apt-repository ppa:kelleyk/emacs -y
-  # For snapshot builds.
-  - sudo add-apt-repository ppa:ubuntu-elisp/ppa -y
-  - sudo apt-get update -q
-  - sudo apt-get install -q -y ${EMACS}
+install:
+  - curl -fsSkL https://gist.github.com/rejeep/ebcd57c3af83b049833b/raw > travis.sh && source ./travis.sh
+  - evm install $EVM_EMACS --use --skip
 
 env:
-  - EMACS=emacs24
-  - EMACS=emacs25
-  - EMACS=emacs-snapshot
+  - EVM_EMACS=emacs-24.4-travis
+  - EVM_EMACS=emacs-24.5-travis
+  - EVM_EMACS=emacs-25.1-travis
+  - EVM_EMACS=emacs-25.2-travis
+  - EVM_EMACS=emacs-25.3-travis
+  - EVM_EMACS=emacs-26.1-travis
 
 script:
   - echo "(add-to-list 'package-archives '(\"melpa\" . \"http://stable.melpa.org/packages/\") t)" >> ./local-environment.el
