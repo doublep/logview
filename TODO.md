@@ -20,13 +20,6 @@
   sections can be made to span single request to your server
   (optionally bind to threads too).
 
-* Replace timestamps with difference (likely to section start, as
-  defined above) on demand.  E.g. something like this:
-
-      18:11:03.038 [org.me.MyServer] processing request to 'Foo'
-            +0.003 [org.me.SpecificServlet] initializing
-            +0.004 [org.me.DatabaseUtils] querying the database: '...'
-
 * Add a command to find big gaps in timestamps.  Alternatively or in
   addition to the requested jumping, it could also be used to define
   sections.  See https://github.com/doublep/logview/issues/5

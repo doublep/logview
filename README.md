@@ -181,6 +181,17 @@ See [more detailed description below](#views-explained).
 In Transient Mark mode `h` and `s` operate on region when mark is
 active.
 
+#### Entry timestamp commands
+
+* Replace timestamps with their difference to that of the current
+  entry: `z a`.
+* Same as above, but only within the same thread: `z t`
+* Go to the entry difference to which timestamp is shown: `z z`
+* Don’t show timestamp differences: `z A`
+* Don’t show timestamp differences for this thread: `z T`
+
+Timestamp differences are displayed in seconds.
+
 #### Explicitly hide or show details of individual entries
 
 The mode terms all message lines after the first ‘details’.
