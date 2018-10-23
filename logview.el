@@ -781,6 +781,7 @@ this face is used."
 ;; - 2-9: group 1-4 (timestamp, level, name, thread) begin/end offsets;
 ;; - 10:  details (second line) start offset, or nil if there is no second line;
 ;; - 11:  entry level as a number;
+;; - 12:  entry timestamp as a float (or nil, if not parsed yet).
 ;;
 ;; Offsets are relative to the entry beginning.  We store offsets so that values remain
 ;; valid even if buffer text is shifted forwards or backwards.
@@ -812,6 +813,11 @@ this face is used."
 
 (defsubst logview--entry-level (entry)
   (aref entry 11))
+
+;; Parse entry timestamp.  This value is cached.
+(defsubst logview--entry-timestamp (entry start)
+  (or (aref entry 12)
+      (aset entry 12 (funcall logview--submode-timestamp-parser (logview--entry-group entry start logview--timestamp-group)))))
 
 
 ;; The following (inlined) functions are needed when applying
@@ -1787,8 +1793,8 @@ difference bases (appointed with `\\<logview-mode-map>\\[logview-thread-differen
   (logview--assert 'timestamp)
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
-      (unless (and (equal (car logview--timestamp-difference-base) start) (null logview--timestamp-difference-per-thread-bases))
-        (setq logview--timestamp-difference-base             (logview--difference-base entry start)
+      (unless (and (equal (cdr logview--timestamp-difference-base) start) (null logview--timestamp-difference-per-thread-bases))
+        (setq logview--timestamp-difference-base             (cons entry start)
               logview--timestamp-difference-per-thread-bases nil)
         (logview--refontify-buffer)))))
 
@@ -1801,10 +1807,10 @@ it stays in effect for other threads."
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
       (let ((thread (logview--entry-group entry start logview--thread-group)))
-        (unless (and logview--timestamp-difference-per-thread-bases (equal (car (gethash thread logview--timestamp-difference-per-thread-bases)) start))
+        (unless (and logview--timestamp-difference-per-thread-bases (equal (cdr (gethash thread logview--timestamp-difference-per-thread-bases)) start))
           (unless logview--timestamp-difference-per-thread-bases
             (setq logview--timestamp-difference-per-thread-bases (make-hash-table :test #'equal)))
-          (puthash thread (logview--difference-base entry start) logview--timestamp-difference-per-thread-bases)
+          (puthash thread (cons entry start) logview--timestamp-difference-per-thread-bases)
           (logview--refontify-buffer))))))
 
 (defun logview-go-to-difference-base-entry ()
@@ -1813,16 +1819,15 @@ it stays in effect for other threads."
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
       (let* ((thread          (logview--entry-group entry start logview--thread-group))
-             (difference-base (car (or (when logview--timestamp-difference-per-thread-bases
-                                         (gethash thread logview--timestamp-difference-per-thread-bases))
-                                       logview--timestamp-difference-base))))
+             (difference-base (or (when logview--timestamp-difference-per-thread-bases
+                                    (gethash thread logview--timestamp-difference-per-thread-bases))
+                                  logview--timestamp-difference-base)))
         (unless difference-base
           (user-error "There is no timestamp difference base for the current entry"))
         (when (invisible-p difference-base)
           (user-error "Timestamp difference base for the current entry is currently hidden"))
-        (let* ((entry+start (logview--do-locate-current-entry difference-base))
-               (entry       (car entry+start))
-               (start       (cdr entry+start)))
+        (let* ((entry (car difference-base))
+               (start (cdr difference-base)))
           (unless (and (< start (logview--point-max)) (> (logview--entry-end entry start) (logview--point-min)))
             (user-error "Difference base entry is outside the narrowing region"))
           (goto-char (logview--entry-message-start entry start))
@@ -1848,9 +1853,6 @@ it stays in effect for other threads."
           (user-error "There is no thread-specific timestamp difference base for thread `%s'" thread))
         (remhash thread logview--timestamp-difference-per-thread-bases)
         (logview--refontify-buffer)))))
-
-(defun logview--difference-base (entry start)
-  (cons start (funcall logview--submode-timestamp-parser (logview--entry-group entry start logview--timestamp-group))))
 
 
 
@@ -2714,7 +2716,7 @@ next line, which is usually one line beyond END."
                                  (have-next-entry (re-search-forward logview--entry-regexp nil t))
                                  (entry-end       (if have-next-entry (match-beginning 0) (point-max)))
                                  ;; See description of `logview-entry' above.
-                                 (logview-entry   (make-vector 12 nil)))
+                                 (logview-entry   (make-vector 13 nil)))
                             (aset logview-entry 0 (- entry-end entry-start))
                             (let ((points (cdr match-data)))
                               (dotimes (k num-points)
@@ -2933,14 +2935,14 @@ This list is preserved across Emacs session in
                                  (let ((difference-base (or (when difference-bases-per-thread
                                                               (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
                                                             difference-base)))
-                                   (when (and difference-base (not (= (car difference-base) start)))
+                                   (when (and difference-base (not (= (cdr difference-base) start)))
                                      ;; FIXME: It is possible that fractionals are not the last
                                      ;;        thing in the timestamp, in which case it would be
                                      ;;        nicer to add some spaces on the right. However,
                                      ;;        it's not easy to do and is also quite unlikely,
                                      ;;        so ignoring that for now.
-                                     (let* ((difference        (- (funcall logview--submode-timestamp-parser (buffer-substring-no-properties from to))
-                                                                  (cdr difference-base)))
+                                     (let* ((difference        (- (logview--entry-timestamp entry start)
+                                                                  (logview--entry-timestamp (car difference-base) (cdr difference-base))))
                                             (difference-string (format difference-format-string difference))
                                             (length-delta      (- to from (length difference-string))))
                                        (when (> length-delta 0)
