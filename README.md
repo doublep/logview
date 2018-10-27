@@ -106,6 +106,10 @@ active again.
 * Move to next / previous entry: `n` / `p`
 * Move to next / previous ‘as important’ [*] entry: `N` / `P`
 * Move to next / previous entry in the navigation view: `M-n` / `M-p`
+* Move to the next / previous entry with large timestamp gap after the
+  previous: `z n` / `z p`
+* Same as above, but only considering entries in the same thread: `z
+  N` / `z P`
 * Move to first / last entry: `<` / `>`
 
 [*] ‘As important’ means entries with the same or higher level.  For
@@ -210,6 +214,7 @@ In Transient Mark mode `d` operates on region when mark is active.
 These options can be customized globally and additionally temporarily
 changed in each individual buffer.
 
+* Change gap length for `z n` and similar commands: `o g` or `z g`
 * Toggle Auto-Revert mode: `o r`
 * Toggle Auto-Revert Tail mode: `o t`
 * Toggle ‘copy only visible text’: `o v`

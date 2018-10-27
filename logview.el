@@ -344,6 +344,14 @@ will refuse to complete operation unless this check succeeds."
   :type  'integer)
 
 
+(defcustom logview-target-gap-length 60
+  "Default target gap length for `\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar commands.
+
+This must be a non-negative number of seconds.  Can be changed
+temporarily for a single buffer with `\\<logview-mode-map>\\[logview-change-target-gap-length]'."
+  :group 'logview
+  :type  'number)
+
 (defcustom logview-copy-visible-text-only t
   "Whether to copy, kill, etc. only visible selected text.
 Standard Emacs behavior is to copy even invisible text, but that
@@ -379,13 +387,14 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :set   'logview--set-highlight-affecting-variable)
 
 
-(defcustom logview-pulse-entries '(navigation-view)
+(defcustom logview-pulse-entries '(navigation-view timestamp-gap)
   "When to briefly highlight the current entry.
 You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
   :group 'logview
   :type  '(set :inline t
                (const :tag "After navigating a view with `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' or `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]'" navigation-view)
                (const :tag "After navigating within the current entry with `\\<logview-mode-map>\\[logview-go-to-message-beginning]'" message-beginning)
+               (const :tag "After finding large gaps in entry timestamps (`\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar)" timestamp-gap)
                (const :tag "After other entry movement commands" movement)))
 
 (defcustom logview-views-file (locate-user-emacs-file "logview.views")
@@ -575,6 +584,7 @@ this face is used."
 
 (defvar-local logview--submode-timestamp-parser           nil)
 (defvar-local logview--timestamp-difference-format-string nil)
+(defvar-local logview--timestamp-gap-format-string        nil)
 
 (defvar-local logview--as-important-level nil)
 (defvar-local logview--hide-all-details   nil)
@@ -583,6 +593,9 @@ this face is used."
   "Either nil or (POSITION . TIMESTAMP-AS-FLOAT).")
 (defvar-local logview--timestamp-difference-per-thread-bases nil
   "Either nil or a hash-table of strings to cons cells.")
+
+(defvar-local logview--buffer-target-gap-length nil)
+(defvar-local logview--last-found-large-gap     nil)
 
 (defvar-local logview--current-filter-text "")
 (defvar-local logview--current-filter      nil)
@@ -646,6 +659,8 @@ this face is used."
      (logview-next-entry                 logview-previous-entry              "Next / previous entry")
      (logview-next-as-important-entry    logview-previous-as-important-entry "Next / previous ‘as important’ entry")
      (logview-next-navigation-view-entry logview-previous-navigation-view-entry "Next / previous entry in the navigation view (see below)")
+     (logview-next-timestamp-gap         logview-previous-timestamp-gap      "Next / previous large gap in entry timestamps")
+     (logview-next-timestamp-gap-in-this-thread logview-next-timestamp-gap-in-this-thread "Same, but only within this thread")
      (logview-first-entry                logview-last-entry                  "First / last entry")
      "‘As important’ means entries with the same or higher level.")
     ("Narrowing and widening"
@@ -706,6 +721,7 @@ this face is used."
      (logview-forget-difference-base-entries                                 "Don’t show timestamp differences")
      (logview-forget-thread-difference-base-entry                            "Don’t show timestamp differences for this thread"))
     ("Change options for current buffer"
+     (logview-change-target-gap-length                                       "Set gap length for ‘\\[logview-next-timestamp-gap]’ and similar commands")
      (auto-revert-mode                                                       "Toggle Auto-Revert mode")
      (auto-revert-tail-mode                                                  "Toggle Auto-Revert Tail mode")
      (logview-toggle-copy-visible-text-only                                  "Toggle ‘copy only visible text’")
@@ -934,12 +950,18 @@ that the line is not the first in the buffer."
                        ("z z" logview-go-to-difference-base-entry)
                        ("z A" logview-forget-difference-base-entries)
                        ("z T" logview-forget-thread-difference-base-entry)
+                       ("z n" logview-next-timestamp-gap)
+                       ("z p" logview-previous-timestamp-gap)
+                       ("z N" logview-next-timestamp-gap-in-this-thread)
+                       ("z P" logview-previous-timestamp-gap-in-this-thread)
+                       ("z g" logview-change-target-gap-length)
                        ;; Option changing commands.
                        ("o r" auto-revert-mode)
                        ("o t" auto-revert-tail-mode)
                        ("o v" logview-toggle-copy-visible-text-only)
                        ("o m" logview-toggle-search-only-in-messages)
                        ("o e" logview-toggle-show-ellipses)
+                       ("o g" logview-change-target-gap-length)
                        ("o s" logview-choose-submode)
                        ("o S" logview-customize-submode-options)
                        ;; For compatibility with the inactive keymap.
@@ -1856,6 +1878,112 @@ it stays in effect for other threads."
 
 
 
+
+(defun logview-next-timestamp-gap (&optional n)
+  "Move to the next large gap in entry timestamps.
+If N is specified, use that as a gap count.  Filtered out entries
+are ignored.
+
+Point is positioned at the beginning of the message of the first
+entry after the gap.  If there is a large enough gap just after
+the current entry and N is one, this command just moves one entry
+down."
+  (interactive "p")
+  (logview--do-next-timestamp-gap n nil))
+
+(defun logview-previous-timestamp-gap (&optional n)
+  "Move to the previous large gap in entry timestamps.
+If N is specified, use that as a gap count.  Filtered out entries
+are ignored.
+
+Point is positioned at the beginning of the message of the first
+entry after the gap."
+  (interactive "p")
+  (logview--do-next-timestamp-gap (if n (- n) -1) nil))
+
+(defun logview-next-timestamp-gap-in-this-thread (&optional n)
+  "Move to the next large gap in thread's entry timestamps.
+If N is specified, use that as a gap count.  Only consider
+entries within this thread that are not filtered out.
+
+Point is positioned at the beginning of the message of the first
+entry after the gap."
+  (interactive "p")
+  (logview--do-next-timestamp-gap n t))
+
+(defun logview-previous-timestamp-gap-in-this-thread (&optional n)
+  "Move to the previous large gap in thread's entry timestamps.
+If N is specified, use that as a gap count.  Only consider
+entries within this thread that are not filtered out.
+
+Point is positioned at the beginning of the message of the first
+entry after the gap."
+  (interactive "p")
+  (logview--do-next-timestamp-gap (if n (- n) -1) t))
+
+(defun logview--do-next-timestamp-gap (n same-thread-only)
+  (logview--assert 'timestamp)
+  (when same-thread-only
+    (logview--assert 'thread))
+  (unless n
+    (setq n 1))
+  (logview--locate-current-entry started-at-entry started-at
+    (let ((thread (when same-thread-only
+                    (logview--entry-group started-at-entry started-at logview--thread-group))))
+      (when (< n 0)
+        (logview--forward-entry -1 (when thread
+                                     (lambda (entry start)
+                                       (string-equal (logview--entry-group entry start logview--thread-group) thread)))))
+      (logview--std-temporarily-widening
+        (logview--locate-current-entry entry start
+          (let ((remaining (logview--forward-entry n (logview--entry-timestamp-gap-validator entry start thread)))
+                (success   (when logview--last-found-large-gap
+                             (format "Gap to the previous entry%s is %s s"
+                                     (if same-thread-only " of this thread" "")
+                                     (format logview--timestamp-gap-format-string logview--last-found-large-gap))))
+                (failure   (format "No more large enough (%s s or more) gaps in timestamps%s"
+                                   (logview--target-gap-length) (if same-thread-only " in this thread" ""))))
+            (when (< n 0)
+              (if (= remaining n)
+                  (goto-char (logview--entry-message-start started-at-entry started-at))
+                (logview--forward-entry 1)))
+            (logview--maybe-pulse-current-entry 'timestamp-gap)
+            (cond ((= n 0))
+                  ((= remaining n)
+                   (user-error "%s" failure))
+                  ((= remaining 0)
+                   (message "%s" success))
+                  (t
+                   (user-error "%s; %s" success (downcase failure))))))))))
+
+(defun logview-change-target-gap-length (length)
+  (interactive (list (if current-prefix-arg
+                         (prefix-numeric-value current-prefix-arg)
+                       (string-to-number (read-from-minibuffer (format "Search for gap this long (currently %s s): " (logview--target-gap-length)))))))
+  (if (and (numberp length) (>= length 0))
+      (setq logview--buffer-target-gap-length (when (/= length 0) length))
+    (user-error "Expected a non-negative positive number")))
+
+(defun logview--entry-timestamp-gap-validator (entry start thread)
+  (let ((timestamp  (logview--entry-timestamp entry start))
+        (target-gap (logview--target-gap-length)))
+    (lambda (entry start)
+      (when (or (null thread) (string-equal (logview--entry-group entry start logview--thread-group) thread))
+        (let* ((new-timestamp (logview--entry-timestamp entry start))
+               (gap           (abs (- new-timestamp timestamp))))
+          (setq timestamp new-timestamp)
+          (when (>= gap target-gap)
+            (setq logview--last-found-large-gap gap)))))))
+
+(defun logview--target-gap-length ()
+  (let ((target-gap (or logview--buffer-target-gap-length logview-target-gap-length)))
+    (if (and (numberp target-gap) (> target-gap 0))
+        target-gap
+      ;; Might want to issue a user error instead.
+      60)))
+
+
+
 ;;; Option changing commands.
 
 (defun logview-toggle-copy-visible-text-only (&optional arg)
@@ -1978,23 +2106,25 @@ These are:
             (dolist (entry (cdr section))
               (if (listp entry)
                   (insert "  " (logview--help-format-keys entry "[1-5]" keys-width)
-                          "  " (car (last entry)) "\n")
-                (insert "\n  " (replace-regexp-in-string (rx "\\["
-                                                             (group (1+ (any alnum ?-)))
-                                                             (? " <" (group (1+ (not (any ?>)))) ">")
-                                                             "]")
-                                                         (lambda (text)
-                                                           (save-match-data
-                                                             (logview--help-format-keys (list (intern (match-string 1 text))) (match-string 2 text))))
-                                                         entry t t)
-                        "\n")))))))
+                          "  " (logview--help-substitute-keys (car (last entry))) "\n")
+                (insert "\n  " (logview--help-substitute-keys entry) "\n")))))))
     (goto-char 1)
     (help-mode)
     (let ((map (make-sparse-keymap)))
       (set-keymap-parent map help-mode-map)
       (substitute-key-definition 'revert-buffer 'undefined map help-mode-map)
       (use-local-map map)))
-    (pop-to-buffer "*Logview cheat sheet*"))
+  (pop-to-buffer "*Logview cheat sheet*"))
+
+(defun logview--help-substitute-keys (text)
+  (replace-regexp-in-string (rx "\\["
+                                (group (1+ (any alnum ?-)))
+                                (? " <" (group (1+ (not (any ?>)))) ">")
+                                "]")
+                            (lambda (text)
+                              (save-match-data
+                                (logview--help-format-keys (list (intern (match-string 1 text))) (match-string 2 text))))
+                            text t t))
 
 (defun logview--help-format-keys (entry &optional preferred-keys width)
   (if (listp entry)
@@ -2273,13 +2403,13 @@ returns non-nil."
                 (setq logview--submode-level-faces (make-vector level-index nil))
                 (dolist (level-data logview--submode-level-data)
                   (aset logview--submode-level-faces (cadr level-data) (cddr level-data)))
-                (setq logview--submode-timestamp-parser           (when (memq 'timestamp features)
-                                                                    (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
-                                                                           :locale timestamp-locale :timezone 'system
-                                                                           logview--datetime-parsing-options))
-                      logview--timestamp-difference-format-string (when (memq 'timestamp features)
-                                                                    (format "%%+.%df" (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern)
-                                                                                             logview--datetime-parsing-options))))
+                (when (memq 'timestamp features)
+                  (let ((num-fractionals (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern) logview--datetime-parsing-options)))
+                    (setq logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
+                                                                             :locale timestamp-locale :timezone 'system
+                                                                             logview--datetime-parsing-options)
+                          logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
+                          logview--timestamp-gap-format-string        (format "%%.%df" num-fractionals))))
                 (read-only-mode 1)
                 (when buffer-file-name
                   (pcase logview-auto-revert-mode

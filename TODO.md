@@ -19,7 +19,3 @@
   to the section start, narrow to section etc.  The idea is that
   sections can be made to span single request to your server
   (optionally bind to threads too).
-
-* Add a command to find big gaps in timestamps.  Alternatively or in
-  addition to the requested jumping, it could also be used to define
-  sections.  See https://github.com/doublep/logview/issues/5
