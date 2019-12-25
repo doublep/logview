@@ -78,17 +78,23 @@ This value is used as the fallback for customizable
 `logview-additional-submodes'.")
 
 (defvar logview-std-level-mappings
-  '(("SLF4J" . ((error       "ERROR")
-                (warning     "WARN")
-                (information "INFO")
-                (debug       "DEBUG")
-                (trace       "TRACE")
-                (aliases     "Log4j" "Log4j2" "Logback")))
-    ("JUL"   . ((error       "SEVERE")
-                (warning     "WARNING")
-                (information "INFO")
-                (debug       "CONFIG" "FINE")
-                (trace       "FINER" "FINEST"))))
+  '(("SLF4J"    . ((error       "ERROR")
+                   (warning     "WARN")
+                   (information "INFO")
+                   (debug       "DEBUG")
+                   (trace       "TRACE")
+                   (aliases     "Log4j" "Log4j2" "Logback")))
+    ("JUL"      . ((error       "SEVERE")
+                   (warning     "WARNING")
+                   (information "INFO")
+                   (debug       "CONFIG" "FINE")
+                   (trace       "FINER" "FINEST")))
+    ("RFC 5424" . ((error "EMERGENCY" "ALERT" "CRITICAL" "ERROR")
+                   (warning "WARNING")
+                   (information "NOTICE" "INFO")
+                   (debug "DEBUG")
+                   (trace)
+                   (aliases "syslog"))))
   "Standard mappings of actual log levels to mode's final levels.
 This alist value is used as the fallback for customizable
 `logview-additional-level-mappings'.")
@@ -203,9 +209,9 @@ levels  [may be optional]
     lacks levels altogether.
 
     There are some predefined values valid for this field:
-    \"SLF4J\" (and its alises \"Log4j\", \"Log4j2\", \"Logback\"
-    and \"JUL\".  See variable `logview-std-level-mappings' for
-    details.
+    \"SLF4J\" (and its aliases \"Log4j\", \"Log4j2\",
+    \"Logback\", \"JUL\" and the syslog standard \"RFC 5424\".
+    See variable `logview-std-level-mappings' for details.
 
 timestamp  [optional]
 
@@ -260,7 +266,14 @@ complicated:
 JUL has seven severity levels and we need to map them to five the
 mode supports.  So the last two lists contain two levels each.
 It is also legal to have empty lists, usually if there are less
-than five levels.
+than five levels, or if some of the levels do not conceptually
+map to the levels of the mode.  This is the case with RFC 5424:
+
+        Error levels:        EMERGENCY, ALERT, CRITICAL, ERROR
+        Warning levels:      WARNING
+        Information levels:  NOTICE, INFO
+        Debug levels:        DEBUG
+        Trace levels:
 
 Mapping can have any number of optional aliases, which work just
 as the name."
