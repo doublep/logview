@@ -19,7 +19,7 @@ command bindings lack modifiers.
 
 Out-of-the-box the mode should be able to parse standard SLF4J (Log4j,
 Logback) files as long as they use ISO 8601 timestamps, Apache error
-logs and certain UNIX files in `/var/log`.
+logs, PHP Monolog logs, and certain UNIX files in `/var/log`.
 
 
 ### Installation

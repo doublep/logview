@@ -73,8 +73,11 @@
                 (aliases . ("Log4j" "Log4j2" "Logback"))))
     ;; We misuse thread as a field for hostname.
     ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME:")))
-    ("Apache Error Log" . ((format . "[TIMESTAMP] [NAME:LEVEL] [THREAD] MESSAGE")
-                           (levels . "RFC 5424 lowercase"))))
+    ("Apache Error Log"  . ((format . "[TIMESTAMP] [NAME:LEVEL] [THREAD] MESSAGE")
+                           (levels . "RFC 5424 lowercase")))
+    ("Monolog" . ((format  . "[TIMESTAMP] NAME[THREAD].LEVEL: MESSAGE")
+                  (levels  . "RFC 5424")
+                  (aliases . ("PHP" "PSR-3")))))
   "Alist of standard submodes.
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
@@ -118,7 +121,7 @@ This alist value is used as the fallback for customizable
                     ("ISO 8601 time only + millis"            "HH:mm:ss.SSS")
                     ("ISO 8601 time only + micros"            "HH:mm:ss.SSSSSS")
                     ("ISO 8601 time only"                     "HH:mm:ss")
-                    ("asctime"                                "EEE MMM dd HH:mm:ss.SSSSSS yyyy")
+                    (nil                                      "EEE MMM dd HH:mm:ss.SSSSSS yyyy")
                     (nil                                      "MMM d HH:mm:ss")
                     (nil                                      "MMM d h:mm:ss a")
                     (nil                                      "h:mm:ss a")))
