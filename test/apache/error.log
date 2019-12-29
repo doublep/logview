@@ -1,0 +1,12 @@
+[Wed Oct 30 11:25:15.446929 2019] [core:emergency] [pid 183] Emergency message.
+[Wed Oct 30 11:25:15.446929 2019] [core:alert] [pid 183] Alert message.
+[Wed Oct 30 11:25:15.446929 2019] [core:critical] [pid 183] Critical message.
+[Wed Oct 30 11:25:15.446929 2019] [core:error] [pid 183] Error message.
+[Wed Oct 30 11:25:15.446929 2019] [core:warning] [pid 183] Warning message.
+[Wed Oct 30 11:25:15.446929 2019] [core:notice] [pid 183] Notice message.
+[Wed Oct 30 11:25:15.446929 2019] [core:info] [pid 183] Info message.
+[Wed Oct 30 11:25:15.446929 2019] [core:debug] [pid 183] Debug message.
+kittens unicorns and who knows what.
+
+What even are these line? A weird log format maybe, or details of the one above?
+[Wed Oct 30 11:25:15.446929 2019] [core:info] [pid 183] Info message after some undefined lines.

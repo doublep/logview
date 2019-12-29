@@ -72,7 +72,9 @@
                 (levels  . "SLF4J")
                 (aliases . ("Log4j" "Log4j2" "Logback"))))
     ;; We misuse thread as a field for hostname.
-    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME:"))))
+    ("UNIX"  . ((format  . "TIMESTAMP THREAD NAME:")))
+    ("Apache Error Log" . ((format . "[TIMESTAMP] [NAME:LEVEL] [THREAD] MESSAGE")
+                           (levels . "RFC 5424 lowercase"))))
   "Alist of standard submodes.
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
@@ -89,12 +91,18 @@ This value is used as the fallback for customizable
                    (information "INFO")
                    (debug       "CONFIG" "FINE")
                    (trace       "FINER" "FINEST")))
-    ("RFC 5424" . ((error "EMERGENCY" "ALERT" "CRITICAL" "ERROR")
-                   (warning "WARNING")
+    ("RFC 5424" . ((error       "EMERGENCY" "ALERT" "CRITICAL" "ERROR")
+                   (warning     "WARNING")
                    (information "NOTICE" "INFO")
-                   (debug "DEBUG")
+                   (debug       "DEBUG")
                    (trace)
-                   (aliases "syslog"))))
+                   (aliases     "syslog")))
+    ("RFC 5424 lowercase" . ((error "emergency" "alert" "critical" "error")
+                   (warning     "warning")
+                   (information "notice" "info")
+                   (debug       "debug")
+                   (trace)
+                   (aliases     "Apache error log"))))
   "Standard mappings of actual log levels to mode's final levels.
 This alist value is used as the fallback for customizable
 `logview-additional-level-mappings'.")
@@ -110,6 +118,7 @@ This alist value is used as the fallback for customizable
                     ("ISO 8601 time only + millis"            "HH:mm:ss.SSS")
                     ("ISO 8601 time only + micros"            "HH:mm:ss.SSSSSS")
                     ("ISO 8601 time only"                     "HH:mm:ss")
+                    ("asctime"                                "EEE MMM dd HH:mm:ss.SSSSSS yyyy")
                     (nil                                      "MMM d HH:mm:ss")
                     (nil                                      "MMM d h:mm:ss a")
                     (nil                                      "h:mm:ss a")))
