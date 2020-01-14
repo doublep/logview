@@ -1407,9 +1407,10 @@ that doesn't match any of entered expression."
   (let* ((default-value (unless (eq type 'message)
                           (logview--std-temporarily-widening
                             (logview--locate-current-entry entry start
-                              (let ((base (regexp-quote (logview--entry-group entry start (pcase-exhaustive type
+                              (let ((base (regexp-quote (logview--entry-group entry start (pcase type
                                                                                             (`name   logview--name-group)
-                                                                                            (`thread logview--thread-group))))))
+                                                                                            (`thread logview--thread-group)
+                                                                                            (_       (error "Unhandled type `%s'" type)))))))
                                 (list base (format "^%s$" base)))))))
          (regexp        (read-regexp prompt default-value (cdr (assq type '((name    . logview--name-regexp-history)
                                                                             (thread  . logview--thread-regexp-history)
@@ -1560,6 +1561,8 @@ Interactively, read the view name from the minibuffer."
       (user-error "There are no views defined for the current submode"))
     (logview--completing-read prompt defined-names nil t nil 'logview--view-name-history)))
 
+(defalias 'logview--format-message (if (fboundp 'format-message) 'format-message #'format))
+
 (defun logview--do-save-filters-as-view (name global)
   (unless (car logview--current-filter)
     (user-error "There are currently no filters"))
@@ -1572,10 +1575,10 @@ Interactively, read the view name from the minibuffer."
                         (or global (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))))))
     (dolist (view (logview--views))
       (when (funcall matches view)
-        (unless (y-or-n-p (format-message (if global
-                                              "There is already a view named `%s'. Replace it?"
-                                            "There is already a view named `%s' for this submode. Replace it?")
-                                          name))
+        (unless (y-or-n-p (logview--format-message (if global
+                                                       "There is already a view named `%s'. Replace it?"
+                                                     "There is already a view named `%s' for this submode. Replace it?")
+                                                   name))
           (user-error "View named `%s' already exists; try a different name" name))))
     (let (new-views)
       (dolist (view (logview--views))
@@ -2249,6 +2252,8 @@ returns non-nil."
 
 ;;; Internal functions (except helpers for specific command groups).
 
+(defvar inhibit-message)
+
 (defmacro logview--internal-log (format-string &rest arguments)
   ;; No such variable present on old Emacses, just don't print anything.
   `(when (boundp 'inhibit-message)
@@ -2623,6 +2628,7 @@ See `logview--iterate-entries-forward' for details."
 
 (defun logview--maybe-pulse-current-entry (&optional why)
   (when (or (null why) (memq why logview-pulse-entries))
+    (eval-and-compile (require 'pulse))
     (save-excursion
       (logview--locate-current-entry entry start
         (pulse-momentary-highlight-region start (logview--entry-end entry start) 'logview-pulse)))))

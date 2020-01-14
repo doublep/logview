@@ -23,6 +23,8 @@
 
 (defvar logview--test-directory (file-name-directory (or load-file-name (buffer-file-name))))
 
+(defvar inhibit-message)
+
 
 (defun logview--test-display-warning-advice (&rest arguments)
   (error "Warning elevated to an error: %S" arguments))
@@ -47,7 +49,7 @@
          (advice-add 'display-warning :override #'logview--test-display-warning-advice))
        (unwind-protect
            (with-temp-buffer
-             (insert-file (expand-file-name ,filename logview--test-directory))
+             (insert-file-contents (expand-file-name ,filename logview--test-directory))
              (logview-mode)
              ,@body)
          (when (fboundp 'advice-add)
