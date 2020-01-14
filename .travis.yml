@@ -2,7 +2,7 @@ language: emacs-lisp
 dist: trusty
 
 install:
-  - curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/travis-eldev-and-ert > x.sh && source ./x.sh
+  - curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/travis-eldev-and-evm > x.sh && source ./x.sh
   - evm install $EVM_EMACS --use
 
 env:
