@@ -1,2 +1,6 @@
+/.eldev
+/Eldev-local
+
 *.elc
-local-environment.el
+
+/dist

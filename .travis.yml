@@ -2,8 +2,8 @@ language: emacs-lisp
 dist: trusty
 
 install:
-  - curl -fsSkL https://gist.github.com/rejeep/ebcd57c3af83b049833b/raw > travis.sh && source ./travis.sh
-  - evm install $EVM_EMACS --use --skip
+  - curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/travis-eldev-and-ert > x.sh && source ./x.sh
+  - evm install $EVM_EMACS --use
 
 env:
   - EVM_EMACS=emacs-24.4-travis
@@ -16,7 +16,6 @@ env:
   - EVM_EMACS=emacs-26.3-travis
 
 script:
-  - echo "(add-to-list 'package-archives '(\"melpa\" . \"http://stable.melpa.org/packages/\") t)" >> ./local-environment.el
-  - echo "(package-refresh-contents)"                                                             >> ./local-environment.el
-  - echo "(unless (require 'datetime nil t) (package-install 'datetime))"                         >> ./local-environment.el
-  - ./run-tests.sh
+  - eldev -p -dtT test --expect 5
+  # Also require that byte-compilation produces no warnings.
+  - eldev -dtT compile --set all --warnings-as-errors
