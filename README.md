@@ -172,7 +172,12 @@ See [more detailed description below](#views-explained).
 * Save the current filters as a global view: `V S`
 * Edit submode views: `V e` (pops up a separate buffer)
 * Edit all views: `V E` (pops up a separate buffer)
+* Assign a quick access index to the current view: `V i`
 * Delete a view by name: `V d`
+
+You can also switch to views using their quick access index:
+`M-0`..`M-9` or e.g. `1 4 v` (for quick access index 14).  Prefix
+argument works also for `V n` and `V h`.
 
 #### Explicitly hide or show individual entries
 
@@ -334,6 +339,11 @@ However, to restore the filters now you don’t have to re-create them
 one-by-one.  Simply type `v` and whatever name you used when saving
 your first view.  You can also use text completion to pick among all
 the defined views.
+
+To make choosing views even easier, you can optionally assign quick
+access indices to views.  For this, activate a view normally (or have
+it just saved), type `V i` and enter a number, say 3.  After this, the
+view can be quickly activated again by typing `M-3` or `3 v`.
 
 Remember that further filtering doesn’t affect view definition.  If
 you want to change a view, save filters as a view with the same name

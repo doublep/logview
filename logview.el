@@ -674,8 +674,9 @@ this face is used."
   "# Press C-c C-c to save edited views, C-c C-k to quit without saving.
 ")
 
-(defconst logview--view-header-regexp  (rx bol (group "view")    " " (group (1+ nonl)) eol))
-(defconst logview--view-submode-regexp (rx bol (group "submode") " " (group (1+ nonl)) eol))
+(defconst logview--view-header-regexp  (rx bol (group "view")    (1+ " ") (group (1+ nonl))          eol))
+(defconst logview--view-submode-regexp (rx bol (group "submode") (1+ " ") (group (1+ nonl))          eol))
+(defconst logview--view-index-regexp   (rx bol (group "index")   (1+ " ") (group (? "-") (1+ digit)) eol))
 
 
 (defvar logview--cheat-sheet
@@ -726,7 +727,11 @@ this face is used."
      (logview-save-filters-as-global-view                                    "Save the filters as a globally available view")
      (logview-edit-submode-views                                             "Edit views for the current submode")
      (logview-edit-all-views                                                 "Edit all views")
-     (logview-delete-view                                                    "Delete a view"))
+     (logview-assign-quick-access-index                                      "Assign a quick access index to the current view")
+     (logview-delete-view                                                    "Delete a view")
+     "You can also switch to a view by its quick access index: \\[logview-switch-to-view-by-index <0>]..\\[logview-switch-to-view-by-index <9>].
+For larger indices use prefix argument, e.g.: \\[digit-argument <1>] \\[digit-argument <4>] \\[logview-switch-to-view].  This also
+works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries] commands.")
     ("Explicitly hide or show entries"
      (logview-hide-entry                                                     "Hide entry")
      (logview-hide-region-entries                                            "Hide entries in the region")
@@ -957,6 +962,7 @@ that the line is not the first in the buffer."
                        ("V S" logview-save-filters-as-global-view)
                        ("V e" logview-edit-submode-views)
                        ("V E" logview-edit-all-views)
+                       ("V i" logview-assign-quick-access-index)
                        ("V d" logview-delete-view)
                        ;; Explicit entry hiding/showing commands.
                        ("h"   logview-hide-entry)
@@ -1004,6 +1010,8 @@ that the line is not the first in the buffer."
                        ;; 'suppress-keymap' already.
                        ("u"   universal-argument)))
       (define-key map (kbd (car binding)) (cadr binding)))
+    (dotimes (k 10)
+      (define-key map (kbd (format "M-%d" k)) 'logview-switch-to-view-by-index))
     map))
 
 (defvar logview-mode-inactive-map
@@ -1519,24 +1527,55 @@ entries and cancel any narrowing restrictions."
 
 (defun logview-switch-to-view (view)
   "Switch to a previously defined view.
-Interactively, read the view name from the minibuffer."
-  (interactive (list (logview--choose-view "Switch to view: ")))
+Argument VIEW can either be a string (view name) or a number, in
+which case view with that index is activated.
+
+If called interactively with a prefix argument, use its numeric
+value as quick access index.  Otherwise, read the view name from
+the minibuffer."
+  (interactive (list (logview--choose-view "Switch to view: " current-prefix-arg)))
   (setq logview--current-filter-text (plist-get (logview--find-view view) :filters))
   (logview--parse-filters))
 
+(defun logview-switch-to-view-by-index ()
+  "Switch to a view by its quick access index.
+This command must be bound to a key with a numeric values,
+possibly with modifiers, e.g. `3' or `M-3'.
+
+It is only for interactive use.  Non-interactively, use
+`logview-switch-to-view' instead."
+  (interactive)
+  (let* ((char  (if (integerp last-command-event)
+		    last-command-event
+		  (get last-command-event 'ascii-character)))
+	 (index (- (logand char #x7f) ?0)))
+    (unless (<= 0 index 9)
+      (user-error "This command must invoked by a numeric key, possibly with modifiers"))
+    (logview-switch-to-view index)))
+
 (defun logview-set-navigation-view (view)
   "Set a view to be used for navigation.
-Interactively, read the view name from the minibuffer.
+Argument VIEW can either be a string (view name) or a number, in
+which case view with that index is activated.
+
+If called interactively with a prefix argument, use its numeric
+value as quick access index.  Otherwise, read the view name from
+the minibuffer.
 
 Navigation view filters are not active in the normal sense, but
 you can use `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' and `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]' keys to move across its entries."
-  (interactive (list (logview--choose-view "Navigate through view: ")))
+  (interactive (list (logview--choose-view "Navigate through view: " current-prefix-arg)))
   (setq logview--navigation-view-name (plist-get (logview--find-view view) :name)))
 
 (defun logview-highlight-view-entries (view)
   "Set a view to be used for entry highlighting.
-Interactively, read the view name from the minibuffer."
-  (interactive (list (logview--choose-view "Highlight entries of a view: ")))
+Argument VIEW can either be a string (view name) or a number, in
+which case view with that index is activated.
+
+If called interactively with a prefix argument, use its numeric
+value as quick access index.  Otherwise, read the view name from
+the minibuffer."
+  (interactive (list (logview--choose-view "Highlight entries of a view: " current-prefix-arg)))
   (logview--do-highlight-view-entries (plist-get (logview--find-view view) :name)))
 
 (defun logview-unhighlight-view-entries ()
@@ -1568,23 +1607,51 @@ minibuffer."
   (interactive)
   (logview--do-edit-views nil))
 
+(defun logview-assign-quick-access-index (index)
+  (interactive (list (when (logview--current-view)
+                       ;; Of course `read-number' insists on the default value being a
+                       ;; number and also stuffs it into the prompt.  Have to write our
+                       ;; own, wonderful...
+                       (let (index)
+                         (while (let ((string (read-from-minibuffer "View quick access index (empty for none): ")))
+                                  (cond ((equal string "")
+                                         nil)
+                                        ((integerp (ignore-errors (read string)))
+                                         (setq index (string-to-number string))
+                                         nil)
+                                        (t
+                                         (message "Please enter a number")
+	                                 (sit-for 1)
+                                         t))))
+                         index))))
+  (let ((view (logview--current-view)))
+    (unless view
+      (user-error "Activate a view first"))
+    (plist-put view :index index)
+    (setq logview--views-need-saving t)
+    (logview--update-mode-name)))
+
 (defun logview-delete-view (view)
   "Delete a view definition.
-Interactively, read the view name from the minibuffer."
+Interactively, read the view name from the minibuffer.  Views
+cannot be deleted using their quick access indices."
+  ;; Intentionally not supporting prefix argument here: would be too error-prone.
   (interactive (list (logview--choose-view "Delete view: ")))
   (setq logview--views             (delq (logview--find-view view) (logview--views))
         logview--views-need-saving t)
   (logview--after-updating-view-definitions)
   (logview--update-mode-name))
 
-(defun logview--choose-view (prompt)
-  (let (defined-names)
-    (dolist (view (logview--views))
-      (when (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
-        (push (plist-get view :name) defined-names)))
-    (unless defined-names
-      (user-error "There are no views defined for the current submode"))
-    (logview--completing-read prompt defined-names nil t nil 'logview--view-name-history)))
+(defun logview--choose-view (prompt &optional prefix-arg-value)
+  (if prefix-arg-value
+      (prefix-numeric-value prefix-arg-value)
+    (let (defined-names)
+      (dolist (view (logview--views))
+        (when (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+          (push (plist-get view :name) defined-names)))
+      (unless defined-names
+        (user-error "There are no views defined for the current submode"))
+      (logview--completing-read prompt defined-names nil t nil 'logview--view-name-history))))
 
 (defalias 'logview--format-message (if (fboundp 'format-message) 'format-message #'format))
 
@@ -2135,7 +2202,7 @@ These are:
               (if (listp entry)
                   (insert "  " (logview--help-format-keys entry "[1-5]" keys-width)
                           "  " (logview--help-substitute-keys (car (last entry))) "\n")
-                (insert "\n  " (logview--help-substitute-keys entry) "\n")))))))
+                (insert "\n  " (replace-regexp-in-string "\n" "\n  " (logview--help-substitute-keys entry)) "\n")))))))
     (goto-char 1)
     (help-mode)
     (let ((map (make-sparse-keymap)))
@@ -2454,14 +2521,15 @@ returns non-nil."
     ;; not only in memory, but also on disk.  We use `extmap' to create and read the cache
     ;; file.  If `datetime' reports a different locale database version, cache is
     ;; discarded.
-    (let ((cache-file              (ignore-errors (extmap-init logview-cache-filename)))
-          (locale-database-version (if (fboundp #'datetime-locale-database-version) (with-no-warnings (datetime-locale-database-version)) 0)))
+    (let* ((cache-filename          (locate-user-emacs-file "logview-cache.extmap"))
+           (cache-file              (ignore-errors (extmap-init cache-filename)))
+           (locale-database-version (if (fboundp #'datetime-locale-database-version) (with-no-warnings (datetime-locale-database-version)) 0)))
       (when cache-file
         (let ((cached-externally (extmap-get cache-file 'timestamp-formats t)))
           (when (and cached-externally (equal (extmap-get cache-file 'locale-database-version t) locale-database-version))
             (setq logview--all-timestamp-formats-cache (extmap-get cache-file 'timestamp-formats t)))))
       (if logview--all-timestamp-formats-cache
-          (logview--internal-log "Logview: loaded locale timestamp formats from `%s'" logview-cache-filename)
+          (logview--internal-log "Logview: loaded locale timestamp formats from `%s'" cache-filename)
         (let ((start-time (float-time))
               (patterns (make-hash-table :test 'equal :size 1000))
               (uniques  (make-hash-table :test 'equal :size 1000)))
@@ -2501,8 +2569,8 @@ returns non-nil."
                    uniques)
           (logview--internal-log "Logview/datetime: built list of %d timestamp regexps in %.3f s" (hash-table-count uniques) (- (float-time) start-time))
           (ignore-errors
-            (extmap-from-alist logview-cache-filename `((locale-database-version . ,locale-database-version)
-                                                        (timestamp-formats       . ,logview--all-timestamp-formats-cache))
+            (extmap-from-alist cache-filename `((locale-database-version . ,locale-database-version)
+                                                (timestamp-formats       . ,logview--all-timestamp-formats-cache))
                                :overwrite t))))))
   logview--all-timestamp-formats-cache)
 
@@ -2660,19 +2728,24 @@ See `logview--iterate-entries-forward' for details."
 
 
 (defun logview--update-mode-name ()
-  (let ((view-name (catch 'found
-                     (dolist (view (logview--views))
-                       (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
-                                  (string= (plist-get view :filters) logview--current-filter-text))
-                         (throw 'found (plist-get view :name))))
-                     (let ((canonical-filter-text (logview--canonical-filter-text logview--current-filter-text)))
-                       (dolist (view (logview--views))
-                         (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
-                                    (string= (logview--canonical-filter-text (plist-get view :filters)) canonical-filter-text))
-                           (throw 'found (plist-get view :name))))))))
-    (setq mode-name (if view-name
-                        (format "Logview/%s [%s]" logview--submode-name view-name)
+  (let ((view (logview--current-view)))
+    (setq mode-name (if view
+                        (if (plist-get view :index)
+                            (format "Logview/%s [%s]:%d" logview--submode-name (plist-get view :name) (plist-get view :index))
+                          (format "Logview/%s [%s]" logview--submode-name (plist-get view :name)))
                       (format "Logview/%s" logview--submode-name)))))
+
+(defun logview--current-view ()
+  (catch 'found
+    (dolist (view (logview--views))
+      (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+                 (string= (plist-get view :filters) logview--current-filter-text))
+        (throw 'found view)))
+    (let ((canonical-filter-text (logview--canonical-filter-text logview--current-filter-text)))
+      (dolist (view (logview--views))
+        (when (and (or (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))
+                   (string= (logview--canonical-filter-text (plist-get view :filters)) canonical-filter-text))
+          (throw 'found view))))))
 
 (defun logview--update-invisibility-spec ()
   (let ((invisibility-spec (list logview--hidden-details-symbol logview--hidden-entry-symbol logview--filtered-symbol)))
@@ -2936,16 +3009,27 @@ This list is preserved across Emacs session in
   logview--views)
 
 (defun logview--find-view (view &optional internal)
-  (if (stringp view)
+  (if (or (stringp view) (integerp view))
       (let ((all-views (logview--views))
-            result)
+            matches)
         (while all-views
           (let ((candidate (pop all-views)))
-            (when (and (string= (plist-get candidate :name) view)
+            (when (and (if (stringp view)
+                           (string= (plist-get candidate :name) view)
+                         (equal (plist-get candidate :index) view))
                        (or (null (plist-get candidate :submode)) (string= (plist-get candidate :submode) logview--submode-name)))
-              (setq result    candidate
-                    all-views nil))))
-        (or result (error "Unknown view `%s'" view)))
+              (push candidate matches))))
+        (cond ((null matches)
+               (funcall (if internal #'error #'user-error)
+                        (if (stringp view) "Unknown view `%s'" "There is no view with quick access index %d") view))
+              ((cdr matches)
+               (apply (if internal #'error #'user-error)
+                      (if (stringp view)
+                          `("There are at least two views named `%s'" ,view)
+                        `("There are at least two views with quick access index %d (`%s' and `%s')"
+                          ,view ,(plist-get (car matches) :name) ,(plist-get (cadr matches) :name)))))
+              (t
+               (car matches))))
     (if (and (listp view) (stringp (plist-get view :name)))
         view
       (unless internal
@@ -2956,24 +3040,28 @@ This list is preserved across Emacs session in
     (let (views
           pending-name
           pending-submode
+          pending-index
           filters-from)
       (while t
         (if (or (eobp) (looking-at logview--view-header-regexp))
             (progn (when pending-name
                      (save-excursion
                        (skip-syntax-backward "-" filters-from)
-                       (push (list :name pending-name
-                                   :submode pending-submode
-                                   :filters (buffer-substring-no-properties filters-from (point)))
+                       (push `(:name    ,pending-name
+                               :submode ,pending-submode
+                               ,@(when pending-index `(:index ,pending-index))
+                               :filters ,(buffer-substring-no-properties filters-from (point)))
                              views)))
                    (when (eobp)
                      (throw 'done (nreverse views)))
-                   (setq pending-name (match-string-no-properties 2))
-                   (forward-line)
-                   (if (looking-at logview--view-submode-regexp)
-                       (progn (setq pending-submode (match-string-no-properties 2))
-                              (forward-line))
-                     (setq pending-submode nil))
+                   (setq pending-name    (match-string-no-properties 2)
+                         pending-submode nil
+                         pending-index   nil)
+                   (while (progn (forward-line)
+                                 (cond ((looking-at logview--view-submode-regexp)
+                                        (setq pending-submode (match-string-no-properties 2)))
+                                       ((looking-at logview--view-index-regexp)
+                                        (setq pending-index (string-to-number (match-string-no-properties 2)))))))
                    (setq filters-from (point)))
           (when (and warn-about-garbage (null pending-name) (not (looking-at (rx (0+ blank) (opt "#" (0+ nonl)) eol))))
             (if (yes-or-no-p "Non-comment text before the first view will be discarded; continue? ")
@@ -2989,6 +3077,8 @@ This list is preserved across Emacs session in
       (insert "view " (plist-get view :name) "\n")
       (when (plist-get view :submode)
         (insert "submode " (plist-get view :submode) "\n"))
+      (when (plist-get view :index)
+        (insert "index " (number-to-string (plist-get view :index)) "\n"))
       (insert (plist-get view :filters))
       (unless (bolp)
         (insert "\n")))))
@@ -3286,7 +3376,7 @@ This list is preserved across Emacs session in
           (forward-line 0)
           ;; Never try to parse from the middle of a multiline filter.
           (while (and (not (bobp))
-                      (looking-at "\.\. "))
+                      (looking-at "\\.\\. "))
             (forward-line -1))
           (logview--iterate-filter-buffer-lines
            (lambda (type line-begin begin end)
@@ -3305,6 +3395,10 @@ This list is preserved across Emacs session in
                                                                                                             (assoc submode-name logview-additional-submodes))
                                                                                                         'font-lock-variable-name-face
                                                                                                       'error)))
+                                       t)
+                                      ((looking-at logview--view-index-regexp)
+                                       (put-text-property (match-beginning 1) (match-end 1) 'face 'font-lock-keyword-face)
+                                       (put-text-property (match-beginning 2) (match-end 2) 'face 'font-lock-constant-face)
                                        t))))
                       (put-text-property begin end 'face 'error)))
                    ((string= type "#")
