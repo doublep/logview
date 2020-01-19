@@ -1,0 +1,10 @@
+[2019-12-23 10:51:54] name[thread].EMERGENCY: Emergency message.
+[2019-12-23 10:51:55] name[thread].ALERT: Alert message.
+[2019-12-23 10:51:55] name[thread].CRITICAL: Critical message.
+[2019-12-23 10:51:56] name[thread].ERROR: Error message.
+[2019-12-23 10:51:56] name[thread].WARNING: Warning message.
+[2019-12-23 10:51:56] name[thread].NOTICE: Notice message.
+[2019-12-23 10:51:56] name[thread].INFO: Info message.
+[2019-12-23 10:51:56] name[thread].DEBUG: Debug message.
+[2019-12-23 10:51:56] name[thread].KITTENS: No such level defined by RFC 5424.
+[2019-12-23 10:51:56] name[thread].INFO: Info message after an invalid level.
