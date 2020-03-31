@@ -2521,7 +2521,7 @@ returns non-nil."
     ;; not only in memory, but also on disk.  We use `extmap' to create and read the cache
     ;; file.  If `datetime' reports a different locale database version, cache is
     ;; discarded.
-    (let* ((cache-filename          (locate-user-emacs-file "logview-cache.extmap"))
+    (let* ((cache-filename          logview-cache-filename)
            (cache-file              (ignore-errors (extmap-init cache-filename)))
            (locale-database-version (if (fboundp #'datetime-locale-database-version) (with-no-warnings (datetime-locale-database-version)) 0)))
       (when cache-file
