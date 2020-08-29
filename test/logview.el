@@ -104,6 +104,14 @@
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
+(ert-deftest logview-test-go-to-difference-base-entry-no-thread ()
+  (logview--test-with-file "custom/1.log" ((logview-additional-submodes
+                                            '(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J")))))
+     (logview-difference-to-current-entry)
+     (logview-go-to-difference-base-entry)))
+
+
+
 ;; RFC 5424 levels.
 ;;
 ;; The mock log file should have a list of log messages in the default

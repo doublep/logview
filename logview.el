@@ -1935,7 +1935,8 @@ it stays in effect for other threads."
   (logview--assert 'timestamp)
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
-      (let* ((thread          (logview--entry-group entry start logview--thread-group))
+      (let* ((thread          (when (memq 'thread logview--submode-features)
+                                (logview--entry-group entry start logview--thread-group)))
              (difference-base (or (when logview--timestamp-difference-per-thread-bases
                                     (gethash thread logview--timestamp-difference-per-thread-bases))
                                   logview--timestamp-difference-base)))
