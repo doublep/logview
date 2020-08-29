@@ -14,6 +14,7 @@ env:
   - EVM_EMACS=emacs-26.1-travis
   - EVM_EMACS=emacs-26.2-travis
   - EVM_EMACS=emacs-26.3-travis
+  - EVM_EMACS=emacs-27.1-travis
 
 script:
   - eldev -p -dtT test --expect 5

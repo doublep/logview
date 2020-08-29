@@ -1,8 +1,8 @@
 ; -*- mode: emacs-lisp; lexical-binding: t -*-
 
-(eldev-require-version "0.1.1")
+(eldev-require-version "0.5")
 
-(eldev-use-package-archive 'melpa-stable)
+(eldev-use-package-archive 'melpa)
 
 ;; Emacs 24 seems to issue a buggy byte-compilation warning in
 ;; `logview--views'.  For this reason, disable `-W' on Emacs 24.
