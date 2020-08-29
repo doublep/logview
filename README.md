@@ -1,7 +1,6 @@
 [![License: GPL 3](https://img.shields.io/badge/license-GPL_3-green.svg)](http://www.gnu.org/licenses/gpl-3.0.txt)
 [![GitHub release](https://img.shields.io/github/release/doublep/logview.svg?maxAge=86400)](https://github.com/doublep/logview/releases)
 [![MELPA Stable](http://stable.melpa.org/packages/logview-badge.svg)](http://stable.melpa.org/#/logview)
-[![MELPA](http://melpa.org/packages/logview-badge.svg)](http://melpa.org/#/logview)
 [![Build Status](https://github.com/doublep/logview/workflows/CI/badge.svg)](https://github.com/doublep/logview/actions?query=workflow%3ACI)
 
 
