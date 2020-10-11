@@ -348,6 +348,19 @@ be slow when opening buffers in submodes it doesn't know about."
   :group 'logview
   :type  'integer)
 
+(defcustom logview-max-promising-lines 3
+  "Abort submode guessing after this many \"promising\" lines.
+If a line generally looks like a start of log entry to Logview,
+it is considered \"promising\".  If several such lines still give
+no matching submode, Logview aborts guessing.  This helps
+avoiding very long unsuccessful guessing times even when setting
+`logview-guess-lines' to a higher value.
+
+Setting this to zero makes the mode match against all
+`logview-guess-lines'."
+  :group 'logview
+  :type  'integer)
+
 (defcustom logview-auto-revert-mode nil
   "Automatically put recognized buffers into Auto-Revert mode.
 Buffers for which no appropriate submode can be guessed are not
@@ -2365,7 +2378,10 @@ returns non-nil."
   (save-excursion
     (save-restriction
       (widen)
-      (let ((n 0)
+      (let ((line-number       0)
+            (remaining-attemps (if (and (integerp logview-max-promising-lines) (> logview-max-promising-lines 0))
+                                   logview-max-promising-lines
+                                 most-positive-fixnum))
             standard-timestamps)
         (logview--iterate-split-alists (lambda (_timestamp-name timestamp) (push timestamp standard-timestamps))
                                        logview-additional-timestamp-formats logview-std-timestamp-formats)
@@ -2374,17 +2390,22 @@ returns non-nil."
         (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
           (goto-char 1)
-          (while (and (< n (max logview-guess-lines 1)) (not (eobp)))
+          (while (and (< line-number (max logview-guess-lines 1)) (> remaining-attemps 0) (not (eobp)))
             (let ((line (buffer-substring-no-properties (point) (progn (end-of-line) (point)))))
-              (when (> (length line) 0)
-                (logview--iterate-split-alists (lambda (name definition)
-                                                 (condition-case error
-                                                     (logview--initialize-submode name definition standard-timestamps line)
-                                                   (error (warn (error-message-string error)))))
-                                               logview-additional-submodes logview-std-submodes))
+              (let (promising)
+                (when (> (length line) 0)
+                  (logview--iterate-split-alists (lambda (name definition)
+                                                   (condition-case error
+                                                       (when (logview--initialize-submode name definition standard-timestamps line)
+                                                         (setf promising t))
+                                                     (error (warn (error-message-string error)))))
+                                                 logview-additional-submodes logview-std-submodes))
+                (when promising
+                  (setf remaining-attemps (1- remaining-attemps))))
               (forward-line 1)
-              (setq n (1+ n)))))))))
+              (setq line-number (1+ line-number)))))))))
 
+;; Returns non-nil if TEST-LINE is "promising".
 (defun logview--initialize-submode (name definition standard-timestamps &optional test-line)
   (let* ((format            (cdr (assq 'format    definition)))
          (timestamp-names   (when test-line (cdr (assq 'timestamp definition))))
@@ -2526,7 +2547,9 @@ returns non-nil."
                     (`auto-revert-mode      (auto-revert-mode      1))
                     (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
                 (logview--refilter)
-                (throw 'success nil)))))))))
+                (throw 'success nil))))))
+      ;; "Promising" line.
+      t)))
 
 (defun logview--all-timestamp-formats ()
   (unless logview--all-timestamp-formats-cache

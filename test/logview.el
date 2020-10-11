@@ -62,6 +62,14 @@
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
+(ert-deftest logview-test-log4j-standard-2 ()
+  ;; The start of the first entry in this file is not on the first line.
+  (logview--test-with-file "log4j/part.log" ()
+    (should (equal logview--submode-name "SLF4J"))
+    (logview--locate-current-entry entry start
+      ;; Adjust the number accordingly if you change that file for whatever reason.
+      (should (and entry (equal start 174))))))
+
 (ert-deftest logview-test-log4j-national-timestamp-1 ()
   (logview--test-with-file "log4j/fr-1.log" ()
     (should (equal logview--submode-name "SLF4J"))))

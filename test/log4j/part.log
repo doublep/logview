@@ -1,0 +1,5 @@
+  Let's assume this the end part of details of some message logged in
+  the previous log part.  The log file should still be recognized,
+  given that this is not too long.
+
+2010-03-10 20:03:44.332 [thread 1] INFO my.Class - a message
