@@ -338,11 +338,13 @@ work just as the name."
   :set   'logview--set-submode-affecting-variable)
 
 
-(defcustom logview-guess-lines 10
+(defcustom logview-guess-lines 500
   "When guessing submodes, consider this many lines at the top.
 If any line corresponds to a defined submode, all the others are
-not even looked at.  If this number is very large, Logview might
-be slow when opening buffers in submodes it doesn't know about."
+not even looked at.  If several lines look like log entry starts,
+but still cannot be matched against known submodes, the rest is
+skipped, see variable `logview-max-promising-lines'.  However,
+setting this to a ridiculously large number can still be slow."
   :group 'logview
   :type  'integer)
 
@@ -351,8 +353,8 @@ be slow when opening buffers in submodes it doesn't know about."
 If a line generally looks like a start of log entry to Logview,
 it is considered \"promising\".  If several such lines still give
 no matching submode, Logview aborts guessing.  This helps
-avoiding very long unsuccessful guessing times even when setting
-`logview-guess-lines' to a higher value.
+avoiding very long unsuccessful guessing times even when
+`logview-guess-lines' is large.
 
 Setting this to zero makes the mode match against all
 `logview-guess-lines'."
