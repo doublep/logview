@@ -52,8 +52,8 @@ Alternatively to the second step, add this to your `.emacs` file:
 
 Since there is no standard log file format, Logview mode has to try
 and guess how the log file it operates on is formatted.  It does so by
-trying to parse the very first line of the file against various
-submodes it has.
+trying to parse the first few lines of the file against various
+submodes it has defined.
 
 If it succeeds in guessing, you will see major mode specifed as
 ‘Logview/...’ in the modeline, where the second part is the submode
@@ -71,17 +71,24 @@ show you the three variables that are important for submode guessing.
 You will need to customize at least one of those, or maybe all three.
 All the variables are well-documented in customization interface.
 
-However, it is also possible that Logview fails because it currently
-looks only at the first line in the file.  If real log entries in your
-logs do not start at the very beginning, automatic guessing will not
-succeed even when you have already registered the submode.  In this
-case, you can force Logview to switch to appropriate submode using
-`C-c C-c` shortcut.  Remember that you still need to have it
-registered first.
+However, it is also possible that Logview fails because it looks only
+at the first lines of the buffer.  As of 0.14 this can be up to 500
+lines (see option `logview-guess-lines`), but in the unlikely case
+real log entries in your files start even later, you can customize
+this value.  However, there is an optimization in Logview: if it
+discovers several lines that do look like log entry start, yet cannot
+be understood by the mode, guessing is aborted.  This is done because
+otherwise guessing could take very long time and would still be
+unsuccessful.  This optimization is triggered upon seeing
+`logview-max-promising-lines` such lines (default value is just 3).
+You can always customize this setting if needed, but remember, that
+this can lead to very long guessing times.
 
-In case you don’t want to manually select submode each time in such
-cases, you can set up some automatic switching from a hook using Elisp
-function `logview-choose-submode`.
+Finally, you can always force Logview to switch to appropriate submode
+using `C-c C-c` shortcut.  Remember that you still need to have it
+registered first.  In case you don’t want to manually select submode
+each time in such cases, you can set up some automatic switching from
+a hook using Elisp function `logview-choose-submode`.
 
 If you think your log format is standard enough, you can open an issue
 and request format addition to the list of mode built-ins.
