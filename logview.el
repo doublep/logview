@@ -146,10 +146,8 @@ This value is used as the fallback for customizable
 
 (defun logview--set-submode-affecting-variable (variable value)
   (set variable value)
-  (dolist (buffer (buffer-list))
-    (with-current-buffer buffer
-      (when (and (eq major-mode 'logview-mode) (not (logview-initialized-p)))
-        (logview--guess-submode)))))
+  (when (fboundp #'logview--maybe-guess-submodes-again)
+    (logview--maybe-guess-submodes-again)))
 
 (defun logview--set-highlight-affecting-variable (variable value)
   (set variable value)
@@ -613,6 +611,12 @@ this face is used."
 (defvar logview--all-timestamp-formats-cache nil)
 
 (defconst logview--valid-filter-prefixes '("lv" "LV" "a+" "a-" "t+" "t-" "m+" "m-"))
+
+(defvar logview--custom-submode-revision 0)
+(defvar logview--custom-submode-state nil)
+(defvar logview--submode-guessing-timer nil)
+(defvar logview--need-submode-guessing nil)
+(defvar-local logview--custom-submode-guessed-with 0)
 
 
 (defvar-local logview--point-min nil)
@@ -2403,7 +2407,9 @@ returns non-nil."
                 (when promising
                   (setf remaining-attemps (1- remaining-attemps))))
               (forward-line 1)
-              (setq line-number (1+ line-number)))))))))
+              (setq line-number (1+ line-number))))))
+      ;; This is done regardless of whether guessing has succeeded or not.
+      (setf logview--custom-submode-guessed-with logview--custom-submode-revision))))
 
 ;; Returns non-nil if TEST-LINE is "promising".
 (defun logview--initialize-submode (name definition standard-timestamps &optional test-line)
@@ -2608,6 +2614,65 @@ returns non-nil."
                                                         (timestamp-formats       . ,logview--all-timestamp-formats-cache))
                                :overwrite t))))))
   logview--all-timestamp-formats-cache)
+
+;; Schedule submode reguessing in all Logview buffers that have no submode.  There is some
+;; black magic involved to do it one buffer a time and only when Emacs is idle (to avoid
+;; making it appear hung) and also handle visible buffers first.
+(defun logview--maybe-guess-submodes-again ()
+  (let ((state (list logview-additional-submodes logview-additional-level-mappings logview-additional-timestamp-formats)))
+    (unless (equal state logview--custom-submode-state)
+      (setf logview--custom-submode-state    state
+            logview--custom-submode-revision (1+ logview--custom-submode-revision)
+            logview--need-submode-guessing   (make-hash-table :test #'eq))
+      (dolist (buffer (buffer-list))
+        (when (logview--needs-reguessing-p buffer)
+          (puthash buffer t logview--need-submode-guessing)))
+      (logview--reschedule-submode-guessing))))
+
+(defun logview--needs-reguessing-p (buffer)
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (and (eq major-mode 'logview-mode)
+           (not (logview-initialized-p))
+           (< logview--custom-submode-guessed-with logview--custom-submode-revision)))))
+
+(defun logview--reschedule-submode-guessing ()
+  (when logview--submode-guessing-timer
+    (cancel-timer logview--submode-guessing-timer)
+    (setf logview--submode-guessing-timer nil))
+  (when logview--need-submode-guessing
+    (if (> (hash-table-count logview--need-submode-guessing) 0)
+        (setf logview--submode-guessing-timer (if (current-idle-time)
+                                                  (run-with-timer 0.2 nil
+                                                                  (lambda ()
+                                                                    (if (current-idle-time)
+                                                                        (logview--guess-submode-again)
+                                                                      (logview--reschedule-submode-guessing))))
+                                                (run-with-idle-timer 1 nil #'logview--guess-submode-again)))
+      (setf logview--need-submode-guessing nil))))
+
+(defun logview--guess-submode-again ()
+  (let* (obsolete-buffers
+         (reguessed-in (catch 'processed-buffer
+                         (logview--try-to-guess-submode-again (window-buffer (selected-window)))
+                         (let ((current-frame (selected-frame)))
+                           (dolist (frame (cons current-frame (delq current-frame (frame-list))))
+                             (dolist (window (window-list frame))
+                               (logview--try-to-guess-submode-again (window-buffer window)))))
+                         (maphash (lambda (buffer _)
+                                    (logview--try-to-guess-submode-again buffer)
+                                    (push buffer obsolete-buffers))
+                                  logview--need-submode-guessing))))
+    (remhash reguessed-in logview--need-submode-guessing)
+    (dolist (obsolete obsolete-buffers)
+      (remhash obsolete logview--need-submode-guessing))
+    (logview--reschedule-submode-guessing)))
+
+(defun logview--try-to-guess-submode-again (buffer)
+  (when (logview--needs-reguessing-p buffer)
+    (with-current-buffer buffer
+      (logview--guess-submode)
+      (throw 'processed-buffer buffer))))
 
 
 (defun logview--assert (&rest assertions)
