@@ -392,7 +392,6 @@ will refuse to complete operation unless this check succeeds."
 
 (defcustom logview-target-gap-length 60
   "Default target gap length for `\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar commands.
-
 This must be a non-negative number of seconds.  Can be changed
 temporarily for a single buffer with `\\<logview-mode-map>\\[logview-change-target-gap-length]'."
   :group 'logview
@@ -433,11 +432,12 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :set   'logview--set-highlight-affecting-variable)
 
 
-(defcustom logview-pulse-entries '(navigation-view timestamp-gap)
+(defcustom logview-pulse-entries '(section-movement navigation-view timestamp-gap)
   "When to briefly highlight the current entry.
 You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
   :group 'logview
   :type  '(set :inline t
+               (const :tag "After section movement commands" section-movement)
                (const :tag "After navigating a view with `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' or `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]'" navigation-view)
                (const :tag "After navigating within the current entry with `\\<logview-mode-map>\\[logview-go-to-message-beginning]'" message-beginning)
                (const :tag "After finding large gaps in entry timestamps (`\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar)" timestamp-gap)
@@ -544,6 +544,12 @@ time you use the mode.  Used to make startup faster."
 (defface logview-thread
   '((t :inherit font-lock-variable-name-face))
   "Face to use for logger thread."
+  :group 'logview-faces)
+
+(defface logview-section
+  '((t :inverse-video t
+       :weight        bold))
+  "Face to use for a section's header."
   :group 'logview-faces)
 
 (defface logview-highlight
@@ -676,6 +682,10 @@ this face is used."
 
 (defvar logview--view-name-history)
 
+(defvar-local logview--section-view-name     nil)
+(defvar-local logview--section-header-filter nil)
+(defvar-local logview--sections-thread-bound t)
+
 (defvar-local logview--navigation-view-name  nil)
 (defvar-local logview--highlighted-view-name nil)
 (defvar-local logview--highlighted-filter    nil)
@@ -715,11 +725,13 @@ this face is used."
      (logview-next-timestamp-gap         logview-previous-timestamp-gap      "Next / previous large gap in entry timestamps")
      (logview-next-timestamp-gap-in-this-thread logview-next-timestamp-gap-in-this-thread "Same, but only within this thread")
      (logview-first-entry                logview-last-entry                  "First / last entry")
-     "‘As important’ means entries with the same or higher level.")
+     "‘As important’ means entries with the same or higher level.  See also
+commands in ‘Sections’ below")
     ("Narrowing and widening"
      (logview-narrow-from-this-entry     logview-narrow-up-to-this-entry     "Narrow from / up to this entry")
      (widen                                                                  "Widen")
-     (logview-widen-upwards              logview-widen-downwards             "Widen upwards / downwards"))
+     (logview-widen-upwards              logview-widen-downwards             "Widen upwards / downwards")
+     "See also commands in ‘Sections’ below")
     ("Filtering by level"
      (logview-show-only-errors                                               "Show only errors")
      (logview-show-errors-and-warnings                                       "Show errors and warnings")
@@ -747,6 +759,7 @@ this face is used."
      (logview-reset-all-filters-restrictions-and-hidings                     "Reset filters, widen and show explicitly hidden entries"))
     ("Views"
      (logview-switch-to-view                                                 "Switch to a view")
+     (logview-set-section-view                                               "Choose a view for determining sections")
      (logview-set-navigation-view                                            "Choose a view for navigation")
      (logview-highlight-view-entries                                         "Select a view to highlight its entries")
      (logview-unhighlight-view-entries                                       "Remove view highlighting")
@@ -759,6 +772,15 @@ this face is used."
      "You can also switch to a view by its quick access index: \\[logview-switch-to-view-by-index <0>]..\\[logview-switch-to-view-by-index <9>].
 For larger indices use prefix argument, e.g.: \\[digit-argument <1>] \\[digit-argument <4>] \\[logview-switch-to-view].  This also
 works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries] commands.")
+    ("Sections"
+     (logview-go-to-section-beginning                                        "Beginning of the current section")
+     (logview-go-to-section-end                                              "End of the current section")
+     (logview-next-section               logview-previous-section            "Next / previous section")
+     (logview-next-section-any-thread    logview-previous-section-any-thread "Next / previous section in any thread")
+     (logview-first-section              logview-last-section                "First / last section")
+     (logview-first-section-any-thread   logview-last-section-any-thread     "First / last section in any thread")
+     (logview-toggle-sections-thread-bound                                   "Toggle whether sections are thread-bound")
+     "See also \\[logview-set-section-view].")
     ("Explicitly hide or show entries"
      (logview-hide-entry                                                     "Hide entry")
      (logview-hide-region-entries                                            "Hide entries in the region")
@@ -982,6 +1004,7 @@ that the line is not the first in the buffer."
                        ("r e" logview-reset-all-filters-restrictions-and-hidings)
                        ;; View commands.
                        ("v"   logview-switch-to-view)
+                       ("V c" logview-set-section-view)
                        ("V n" logview-set-navigation-view)
                        ("V h" logview-highlight-view-entries)
                        ("V u" logview-unhighlight-view-entries)
@@ -991,6 +1014,18 @@ that the line is not the first in the buffer."
                        ("V E" logview-edit-all-views)
                        ("V i" logview-assign-quick-access-index)
                        ("V d" logview-delete-view)
+                       ;; Section commands.
+                       ("c a" logview-go-to-section-beginning)
+                       ("c e" logview-go-to-section-end)
+                       ("c n" logview-next-section)
+                       ("c p" logview-previous-section)
+                       ("c N" logview-next-section-any-thread)
+                       ("c P" logview-previous-section-any-thread)
+                       ("c ," logview-first-section)
+                       ("c ." logview-last-section)
+                       ("c <" logview-first-section-any-thread)
+                       ("c >" logview-last-section-any-thread)
+                       ("c t" logview-toggle-sections-thread-bound)
                        ;; Explicit entry hiding/showing commands.
                        ("h"   logview-hide-entry)
                        ("H"   logview-hide-region-entries)
@@ -1110,7 +1145,6 @@ command additionally shows the real timestamp in the echo area."
 
 (defun logview-next-entry (&optional n)
   "Move point vertically down N (1 by default) log entries.
-
 Point is positioned at the beginning of the message of the
 resulting entry.  If log entries are single-line, this is almost
 equal to `next-line'.  However, if messages span several lines,
@@ -1126,7 +1160,6 @@ the function will have significantly different effect."
 
 (defun logview-previous-entry (&optional n)
   "Move point vertically up N (1 by default) log entries.
-
 Point is positioned at the beginning of the message of the
 resulting entry.  If log entries are single-line, this is almost
 equal to `next-line'.  However, if messages span several lines,
@@ -1136,6 +1169,8 @@ the function will have significantly different effect."
 
 (defun logview-next-as-important-entry (&optional n)
   "Move point vertically down N 'as important' entries.
+Point is positioned at the beginning of the message of the
+resulting entry.
 
 Here 'as important' means any entry of level equal or higher than
 that of the current entry.  For example, if you start moving from
@@ -1143,10 +1178,7 @@ a warning, the function will stop on all warnings and errors in
 the buffer, but skip all other 'less important' entries.  If the
 last used command is either `logview-next-as-important-entry' or
 `logview-previous-as-important-entry', list of what is considered
-'as important' is kept, otherwise it is recomputed anew.
-
-Point is positioned at the beginning of the message of the
-resulting entry."
+'as important' is kept, otherwise it is recomputed anew."
   (interactive "p")
   (logview--assert 'level)
   (unless n
@@ -1162,12 +1194,11 @@ resulting entry."
 
 (defun logview-previous-as-important-entry (&optional n)
   "Move point vertically up N 'as important' entries.
+Point is positioned at the beginning of the message of the
+resulting entry.
 
 See function `logview-next-as-important-entry' for definition of
-'as important'.
-
-Point is positioned at the beginning of the message of the
-resulting entry."
+'as important'."
   (interactive "p")
   (logview-next-as-important-entry (if n (- n) -1)))
 
@@ -1209,7 +1240,6 @@ command `\\<logview-mode-map>\\[logview-set-navigation-view]' to change that lat
 
 (defun logview-first-entry ()
   "Move point to the first log entry.
-
 Point is positioned at the beginning of the message of the entry.
 Otherwise this function is similar to `beginning-of-buffer'."
   (interactive)
@@ -1217,7 +1247,6 @@ Otherwise this function is similar to `beginning-of-buffer'."
 
 (defun logview-last-entry ()
   "Move point to the last log entry.
-
 Point is positioned at the beginning of the message of the entry.
 If the last entry is multiline, this makes the function quite
 different from `end-of-buffer'."
@@ -1240,22 +1269,20 @@ different from `end-of-buffer'."
 
 (defun logview-narrow-from-this-entry (&optional n)
   "Narrow the buffer so that previous log entries are hidden.
-
 If invoked interactively with a prefix argument, leave that many
-entries above the current visible after narrowing.  Note that as
-an exception to standard numeric prefix value rules, here no
-prefix means zero."
+entries above the current visible after narrowing.  As an
+exception to the standard numeric prefix value conventions, here
+no prefix means zero."
   (interactive (list (when current-prefix-arg
                        (prefix-numeric-value current-prefix-arg))))
   (logview--do-narrow-one-side t n))
 
 (defun logview-narrow-up-to-this-entry (&optional n)
   "Narrow the buffer so that following log entries are hidden.
-
 If invoked interactively with a prefix argument, leave that many
-entries under the current visible after narrowing.  Note that as
-an exception to standard numeric prefix value rules, here no
-prefix means zero."
+entries under the current visible after narrowing.  As an
+exception to the standard numeric prefix value conventions, here
+no prefix means zero."
   (interactive (list (when current-prefix-arg
                        (prefix-numeric-value current-prefix-arg))))
   (logview--do-narrow-one-side nil n))
@@ -1580,6 +1607,18 @@ It is only for interactive use.  Non-interactively, use
       (user-error "This command must invoked by a numeric key, possibly with modifiers"))
     (logview-switch-to-view index)))
 
+(defun logview-set-section-view (view)
+  "Use given view to split log file into sections.
+Argument VIEW can either be a string (view name) or a number, in
+which case view with that index is used.  Views can be either
+thread-bound or not, use `\\<logview-mode-map>\\[logview-toggle-sections-thread-bound]' to toggle.
+
+If called interactively with a prefix argument, use its numeric
+value as quick access index.  Otherwise, read the view name from
+the minibuffer."
+  (interactive (list (logview--choose-view "View to determine sections: " current-prefix-arg)))
+  (logview--do-set-section-view (plist-get (logview--find-view view) :name)))
+
 (defun logview-set-navigation-view (view)
   "Set a view to be used for navigation.
 Argument VIEW can either be a string (view name) or a number, in
@@ -1735,6 +1774,209 @@ cannot be deleted using their quick access indices."
           logview-filter-edit--editing-views             t
           logview-filter-edit--editing-views-for-submode submode)
     (logview-filter-edit--initialize-text)))
+
+
+
+;;; Section commands.
+
+(defun logview-go-to-section-beginning (&optional n set-view-if-needed)
+  "Move point to the beginning of current section.
+If the actual first section's entry is not visible, go to the
+earliest visible one.
+
+If an argument N is specified, move N - 1 sections forward
+first (for consistency with standard commands like `C-a').
+Sections that consist only of hidden entries (due to any reasons)
+are ignored.
+
+When called interactively and there is no section-defining view
+yet (or it got deleted or renamed), ask for the view first.  You
+can use command `\\<logview-mode-map>\\[logview-set-section-view]' to change that later."
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0)))
+
+(defun logview-go-to-section-end (&optional n set-view-if-needed)
+  "Move point to the end of current section.
+If the actual last section's entry is not visible, go to the
+latest visible one.
+
+If an argument N is specified, move N - 1 sections forward
+first (for consistency with standard commands like `C-e').
+Sections that consist only of hidden entries (due to any reasons)
+are ignored.
+
+When called interactively and there is no section-defining view
+yet (or it got deleted or renamed), ask for the view first.  You
+can use command `\\<logview-mode-map>\\[logview-set-section-view]' to change that later."
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0) t))
+
+(defun logview-next-section (&optional n set-view-if-needed)
+  "Move point down N (1 by default) log sections.
+Point is positioned at the beginning of the message of the first
+visible entry (usually the header) of the resulting section"
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (unless n
+    (setf n 1))
+  (logview--maybe-complain-about-movement n (logview--do-forward-section-as-command set-view-if-needed n) 'section))
+
+(defun logview-previous-section (&optional n set-view-if-needed)
+  "Move point up N (1 by default) log sections.
+Point is positioned at the beginning of the message of the first
+visible entry (usually the header) of the resulting section"
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (logview-next-section (if n (- n) -1) set-view-if-needed))
+
+(defun logview-next-section-any-thread (&optional n set-view-if-needed)
+  "Move point down N (1 by default) log sections regarless of thread.
+This is like `logview-next-section', only temporary pretending
+that sections are not thread-bound."
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (let ((logview--sections-thread-bound nil))
+    (logview-next-section n set-view-if-needed)))
+
+(defun logview-previous-section-any-thread (&optional n set-view-if-needed)
+  "Move point up N (1 by default) log sections regarless of thread.
+This is like `logview-previous-section', only temporary
+pretending that sections are not thread-bound.  Because of this,
+results may be somewhat unexpected, e.g. going to the header of
+the current section if there is exactly one intervening section
+header in a different thread."
+  ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p\np")
+  (logview-next-section-any-thread (if n (- n) -1) set-view-if-needed))
+
+(defun logview-first-section (&optional set-view-if-needed)
+  "Move point to the first (visible) section in this thread.
+Point is positioned at the beginning of the message of the
+visible entry (usually the header) of the section."
+  ;; The "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p")
+  (unless (region-active-p)
+    (push-mark))
+  (logview--do-forward-section-as-command set-view-if-needed most-negative-fixnum))
+
+(defun logview-last-section (&optional set-view-if-needed)
+  "Move point to the last (visible) section in this thread.
+Point is positioned at the beginning of the message of the
+visible entry (usually the header) of the section."
+  ;; The "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p")
+  (unless (region-active-p)
+    (push-mark))
+  (when (> (logview--do-forward-section-as-command set-view-if-needed most-positive-fixnum) 0)
+    (logview--forward-section 0)))
+
+(defun logview-first-section-any-thread (&optional set-view-if-needed)
+  "Move point to the first (visible) section regardless of thread.
+This is like `logview-first-section', only temporary pretending
+that sections are not thread-bound."
+  ;; The "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p")
+  (let ((logview--sections-thread-bound nil))
+    (logview-first-section set-view-if-needed)))
+
+(defun logview-last-section-any-thread (&optional set-view-if-needed)
+  "Move point to the last (visible) section regardless of thread.
+This is like `logview-last-section', only temporary pretending
+that sections are not thread-bound."
+  ;; The "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
+  ;; interactively.
+  (interactive "p")
+  (let ((logview--sections-thread-bound nil))
+    (logview-last-section set-view-if-needed)))
+
+(defun logview-toggle-sections-thread-bound (&optional arg)
+  "Toggle whether sections are bound to threads.
+Section-defining view determines which entries start sections.
+If sections are thread-bound (the default), only another match
+within the same thread ends a section.  Otherwise, any match ends
+the previous section.  If sections are thread-bound, they can
+overlap.
+
+If invoked with prefix argument, make sections thread-bound if
+the argument is positive, non-bound otherwise."
+  (interactive (list (or current-prefix-arg 'toggle)))
+  (logview--assert 'thread)
+  (logview--toggle-option-locally 'logview--sections-thread-bound arg (called-interactively-p 'interactive)
+                                  "Sections are now thread-bound and can overlap"
+                                  "Sections are not thread-bound anymore and are always sequential"))
+
+(defun logview-sections-thread-bound-p ()
+  (and logview--sections-thread-bound (memq 'thread logview--submode-features)))
+
+(defun logview--ensure-section-view (set-view-if-needed)
+  (when set-view-if-needed
+    (unless (logview--find-view logview--section-view-name t)
+      (logview--do-set-section-view (logview--choose-view (substitute-command-keys
+                                                           "View that defines sections (change with `\\[logview-set-section-view]'): "))))))
+
+(defun logview--do-forward-section-as-command (set-view-if-needed n &optional go-to-end)
+  (logview--assert)
+  (logview--ensure-section-view set-view-if-needed)
+  (prog1 (logview--forward-section n go-to-end)
+    (logview--maybe-pulse-current-entry 'section-movement)))
+
+(defun logview--forward-section (n &optional go-to-end)
+  (logview--locate-current-entry last-valid-entry last-valid-start
+    ;; The logic of this code is pretty much impossible to follow.  Just trust it as long
+    ;; as it passes the tests.
+    (let* ((forward         (or (> n 0) (and (= n 0) go-to-end)))
+           (section-thread  (when (logview-sections-thread-bound-p)
+                              (logview--entry-group last-valid-entry last-valid-start logview--thread-group)))
+           (header-filter   (cdr logview--section-header-filter))
+           ;; Current section is always visible.
+           (visible-section t)
+           (callback        (lambda (entry start)
+                              ;; Ignore entries belonging to a "wrong" thread and continue.
+                              (or (and section-thread (not (string= (logview--entry-group entry start logview--thread-group) section-thread)))
+                                  (let ((header (funcall header-filter entry start)))
+                                    (if (and (= n 0) forward go-to-end header)
+                                        nil
+                                      (let ((invisible (invisible-p start)))
+                                        (when header
+                                          (unless (or invisible forward)
+                                            (setf visible-section t))
+                                          (when visible-section
+                                            (setf n (if forward (1- n) (1+ n))))
+                                          (when forward
+                                            (setf visible-section nil)))
+                                        (or invisible
+                                            (progn
+                                              (setf last-valid-entry entry
+                                                    last-valid-start start)
+                                              (when (or forward (not header))
+                                                (setf visible-section t))
+                                              (or (if forward
+                                                      (or (> n 0) go-to-end)
+                                                    (when (if go-to-end
+                                                              (or (< n 0) header)
+                                                            (or (<= n 0) (not header)))
+                                                      (when header
+                                                        (setf visible-section nil))
+                                                      t))
+                                                  (progn (setf n 0) nil)))))))))))
+      (if forward
+          (logview--iterate-entries-forward last-valid-start callback nil nil t)
+        (logview--iterate-entries-backward  last-valid-start callback))
+      (goto-char (logview--entry-message-start last-valid-entry last-valid-start))
+      (unless visible-section
+        (setf n (if forward (1+ n) (1- n))))
+      n)))
 
 
 
@@ -2688,7 +2930,7 @@ returns non-nil."
                                          (timestamp . "Log entries lack timestamps"))))))))
 
 
-(defun logview--forward-entry (&optional n validator)
+(defun logview--forward-entry (n &optional validator)
   (logview--locate-current-entry last-valid-entry last-valid-start
     (cond ((> n 0)
            (logview--iterate-entries-forward (point)
@@ -2713,8 +2955,10 @@ returns non-nil."
   ;; Using 'equal' since 'remaining' may also be nil.
   (unless (equal remaining 0)
     (user-error (pcase type
-                  (`nil          (if (> direction 0) "No next (visible) entry"              "No previous (visible) entry"))
-                  (`as-important (if (> direction 0) "No next (visible) as important entry" "No previous (visible) as important entry"))
+                  (`nil          (if (> direction 0)         "No next (visible) entry"              "No previous (visible) entry"))
+                  (`as-important (if (> direction 0)         "No next (visible) as important entry" "No previous (visible) as important entry"))
+                  (`section      (concat (if (> direction 0) "No next (visible) section"            "No previous (visible) section")
+                                         (if (logview-sections-thread-bound-p) " in this thread" "")))
                   (_             (if (> direction 0) "No next (visible) entry in view `%s'" "No previous (visible) entry in view `%s'")))
                 type)))
 
@@ -3195,8 +3439,19 @@ This list is preserved across Emacs session in
 (defun logview--after-updating-view-definitions ()
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
-      (when (and (eq major-mode 'logview-mode) logview--highlighted-view-name)
-        (logview--do-highlight-view-entries logview--highlighted-view-name)))))
+      (when (eq major-mode 'logview-mode)
+        (when logview--section-view-name
+          (logview--do-set-section-view logview--section-view-name))
+        (when logview--highlighted-view-name
+          (logview--do-highlight-view-entries logview--highlighted-view-name))))))
+
+(defun logview--do-set-section-view (view)
+  (setq view (logview--find-view view t))
+  (let ((filters (logview--do-parse-filters (plist-get view :filters))))
+    (setq logview--section-view-name (plist-get view :name))
+    (unless (prog1 (equal (cdar logview--section-header-filter) (cdar filters))
+              (setq logview--section-header-filter filters))
+      (logview--refontify-buffer))))
 
 (defun logview--do-highlight-view-entries (view)
   (setq view (logview--find-view view t))
@@ -3263,6 +3518,7 @@ This list is preserved across Emacs session in
                      (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
                      (displaying-differences      (or difference-base difference-bases-per-thread))
                      (difference-format-string    logview--timestamp-difference-format-string)
+                     (header-filter               (cdr logview--section-header-filter))
                      (highlighter                 (cdr logview--highlighted-filter))
                      (highlighted-part            logview-highlighted-entry-part)
                      found-anything-visible)
@@ -3312,6 +3568,8 @@ This list is preserved across Emacs session in
                              (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
                                                      (logview--entry-group-end   entry start logview--thread-group)
                                                      'logview-thread))
+                           (when (and header-filter (funcall header-filter entry start))
+                             (add-face-text-property start end 'logview-section))
                            (when (and highlighter (funcall highlighter entry start))
                              (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
                                                      (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)

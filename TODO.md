@@ -14,8 +14,3 @@
 
 * Context when filtering (like grep -C): optionally show N entries
   before/after each that matches filter.
-
-* Sections: somehow make certain entries stand out and add navigation
-  to the section start, narrow to section etc.  The idea is that
-  sections can be made to span single request to your server
-  (optionally bind to threads too).
