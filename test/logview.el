@@ -44,17 +44,13 @@
     `(let (,@erase-customizations
            ,@(eval extra-customizations t)
            (inhibit-message t))
-       ;; Not available on older 24.x versions.  Don't care enough to
-       ;; rewrite differently.
-       (when (fboundp 'advice-add)
-         (advice-add 'display-warning :override #'logview--test-display-warning-advice))
+       (advice-add 'display-warning :override #'logview--test-display-warning-advice)
        (unwind-protect
            (with-temp-buffer
              (insert-file-contents (expand-file-name ,filename logview--test-directory))
              (logview-mode)
              ,@body)
-         (when (fboundp 'advice-add)
-           (advice-remove 'display-warning #'logview--test-display-warning-advice))))))
+         (advice-remove 'display-warning #'logview--test-display-warning-advice)))))
 
 
 (defun logview--test-current-message ()

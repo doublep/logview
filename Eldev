@@ -3,11 +3,3 @@
 (eldev-require-version "0.5")
 
 (eldev-use-package-archive 'melpa)
-
-;; Emacs 24 seems to issue a buggy byte-compilation warning in
-;; `logview--views'.  For this reason, disable `-W' on Emacs 24.
-(add-hook 'eldev-build-system-hook
-          (lambda ()
-            (when (and (< emacs-major-version 25) eldev-build-treat-warnings-as-errors)
-              (eldev-warn "Disabling `--warnings-as-errors', as certain warnings on Emacs 24 are incorrect")
-              (setf eldev-build-treat-warnings-as-errors nil))))

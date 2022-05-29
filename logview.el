@@ -7,7 +7,7 @@
 ;; Version:    0.14.1snapshot
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "24.4") (datetime "0.6.1") (extmap "1.0"))
+;; Package-Requires: ((emacs "25.1") (datetime "0.6.1") (extmap "1.0"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -1719,8 +1719,6 @@ cannot be deleted using their quick access indices."
         (user-error "There are no views defined for the current submode"))
       (logview--completing-read prompt defined-names nil t nil 'logview--view-name-history))))
 
-(defalias 'logview--format-message (if (fboundp 'format-message) 'format-message #'format))
-
 (defun logview--do-save-filters-as-view (name global)
   (unless (car logview--current-filter)
     (user-error "There are currently no filters"))
@@ -1733,10 +1731,10 @@ cannot be deleted using their quick access indices."
                         (or global (null (plist-get view :submode)) (string= (plist-get view :submode) logview--submode-name))))))
     (dolist (view (logview--views))
       (when (funcall matches view)
-        (unless (y-or-n-p (logview--format-message (if global
-                                                       "There is already a view named `%s'. Replace it?"
-                                                     "There is already a view named `%s' for this submode. Replace it?")
-                                                   name))
+        (unless (y-or-n-p (format-message (if global
+                                              "There is already a view named `%s'. Replace it?"
+                                            "There is already a view named `%s' for this submode. Replace it?")
+                                          name))
           (user-error "View named `%s' already exists; try a different name" name))))
     (let (new-views)
       (dolist (view (logview--views))
@@ -2617,10 +2615,8 @@ returns non-nil."
 (defvar inhibit-message)
 
 (defmacro logview--internal-log (format-string &rest arguments)
-  ;; No such variable present on old Emacses, just don't print anything.
-  `(when (boundp 'inhibit-message)
-     (let ((inhibit-message t))
-       (message ,format-string ,@arguments))))
+  `(let ((inhibit-message t))
+     (message ,format-string ,@arguments)))
 
 (defun logview--guess-submode ()
   (save-excursion
@@ -2808,7 +2804,7 @@ returns non-nil."
     ;; file.  If `datetime' reports a different locale database version, cache is
     ;; discarded.
     (let ((cache-file              (ignore-errors (extmap-init logview-cache-filename)))
-          (locale-database-version (if (fboundp #'datetime-locale-database-version) (with-no-warnings (datetime-locale-database-version)) 0)))
+          (locale-database-version (datetime-locale-database-version)))
       (when cache-file
         (let ((cached-externally (extmap-get cache-file 'timestamp-formats t)))
           (when (and cached-externally (equal (extmap-get cache-file 'locale-database-version t) locale-database-version))
@@ -3059,10 +3055,7 @@ See `logview--iterate-entries-forward' for details."
 
 (defun logview--refontify-buffer ()
   (logview--std-temporarily-widening
-    (with-no-warnings (if (fboundp 'font-lock-flush)
-                          (font-lock-flush)
-                        ;; Emacs 24 doesn't have `font-lock-flush'.
-                        (font-lock-fontify-buffer)))))
+    (font-lock-flush)))
 
 
 (defun logview--maybe-pulse-current-entry (&optional why)
