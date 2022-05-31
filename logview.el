@@ -135,6 +135,20 @@ This alist value is used as the fallback for customizable
 This value is used as the fallback for customizable
 `logview-additional-timestamp-formats'.")
 
+(defvar logview-font-lock-defaults '(nil nil t nil
+                                         (font-lock-fontify-region-function . logview--fontify-region))
+  "Value of `font-lock-defaults' in Logview buffers.
+Derived modes shouldn't touch the value of this variable.
+Instead, in their initialization functions they can modify
+`font-lock-defaults' (already having a buffer-local value) as
+needed.  They may also use `font-lock-add-keywords' and similar
+functions.
+
+However, remember that Logview uses heavily optimized font-lock
+overrides.  Some functionality you'd expect a major mode to
+support might not work.  You can file a bug in the issue tracker
+if you have troubles writing a derived mode.")
+
 
 
 ;;; Customization.
@@ -1092,8 +1106,7 @@ successfully.")
   "Major mode for viewing and filtering various log files."
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
-  (setq font-lock-defaults '(nil))
-  (set (make-local-variable 'font-lock-fontify-region-function) #'logview--fontify-region)
+  (setq font-lock-defaults (copy-sequence logview-font-lock-defaults))
   (set (make-local-variable 'filter-buffer-substring-function)  #'logview--buffer-substring-filter)
   (set (make-local-variable 'isearch-filter-predicate)          #'logview--isearch-filter-predicate)
   (add-hook 'after-change-functions #'logview--invalidate-region-entries nil t)
@@ -3485,10 +3498,11 @@ This list is preserved across Emacs session in
             (setq region-end (or (next-single-property-change region-end 'logview-entry) (point-max))))))
       (remove-list-of-text-properties region-start region-end '(logview-entry fontified)))))
 
-(defun logview--fontify-region (region-start region-end _loudly)
+(defun logview--fontify-region (region-start region-end loudly)
   (when (logview-initialized-p)
     (logview--std-temporarily-widening
       ;; We are very fast.  Don't fontify too little to avoid overhead.
+      ;; FIXME: See `font-lock-extend-region-functions'.  Might want to reuse that instead.
       (when (and (< region-end (point-max)) (not (get-text-property (1+ region-end) 'fontified)))
         (let ((expanded-region-end (+ region-start logview--lazy-region-size)))
           (when (< region-end expanded-region-end)
@@ -3497,11 +3511,14 @@ This list is preserved across Emacs session in
         (let ((expanded-region-start (max 1 (- region-end logview--lazy-region-size))))
           (when (> region-start expanded-region-start)
             (setq region-start (or (previous-single-property-change (1- region-start) 'fontified nil expanded-region-start) expanded-region-start)))))
-      (let ((first-entry-start (cdr (logview--do-locate-current-entry region-start))))
-        (when first-entry-start
-          (setq region-start first-entry-start)
-          (logview--std-altering
-            (save-match-data
+      ;; Largely for derived modes.  Logview itself simply replaces all relevant
+      ;; properties (e.g. faces) everywhere in the fontified region and that's normally
+      ;; enough.
+      (font-lock-unfontify-region region-start region-end)
+      (logview--std-altering
+        (save-match-data
+          (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
+            (when region-start
               (let* ((have-timestamp              (memq 'timestamp logview--submode-features))
                      (have-level                  (memq 'level     logview--submode-features))
                      (have-name                   (memq 'name      logview--submode-features))
@@ -3577,7 +3594,12 @@ This list is preserved across Emacs session in
                          ;; ellipses to denote hidden text (i.e. not merged with the previous
                          ;; ellipses).  So, to avoid this bug we just continue.  Besides, font
                          ;; lock would do this anyway.
-                         (not found-anything-visible))))))))))))
+                         (not found-anything-visible))))))))
+          ;; `font-lock-default-fontify-region' includes some other calls that we simply
+          ;; drop for now.  It is unlikely that e.g. a syntax table would be useful here.
+          (unless (equal font-lock-keywords '(t nil))
+            ;; This is largely for derived modes.  Logview itself doesn't define any keywords.
+            (font-lock-fontify-keywords-region region-start region-end loudly))))))
   `(jit-lock-bounds ,region-start . ,region-end))
 
 ;; Returns non-nil if any part of the entry is visible as a result.
