@@ -1,19 +1,19 @@
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Startup - starting up
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - before any sections
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - before any sections continued
-2010-03-10 20:03:44.332 [thread 1] INFO my.Server - serving request 1
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - inside section 1
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - doing stuff (section 1)
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - doing more stuff (section 1)
-2010-03-10 20:03:44.332 [thread 1] INFO my.Server - serving request 2
-2010-03-10 20:03:44.332 [thread 2] INFO my.Server - serving request 3 (in a different thread)
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - inside section 3
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - inside section 2
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - doing stuff (section 3)
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - doing stuff (section 2)
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - doing more stuff (section 3)
-2010-03-10 20:03:44.332 [thread 2] INFO my.Server - serving request 4 (in a different thread)
-2010-03-10 20:03:44.332 [thread 1] DEBUG my.Class - doing more stuff (section 2)
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - inside section 4
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - doing stuff (section 4)
-2010-03-10 20:03:44.332 [thread 2] DEBUG my.Class - doing more stuff (section 4)
+2010-03-10 20:03:44.000 [thread 1] DEBUG my.Startup - starting up
+2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections
+2010-03-10 20:03:44.200 [thread 1] DEBUG my.Class - before any sections continued
+2010-03-10 20:03:45.000 [thread 1] INFO my.Server - serving request 1
+2010-03-10 20:03:45.100 [thread 1] DEBUG my.Class - inside section 1
+2010-03-10 20:03:45.200 [thread 1] DEBUG my.Class - doing stuff (section 1)
+2010-03-10 20:03:45.300 [thread 1] DEBUG my.Class - doing more stuff (section 1)
+2010-03-10 20:03:46.000 [thread 1] INFO my.Server - serving request 2
+2010-03-10 20:03:46.100 [thread 2] INFO my.Server - serving request 3 (in a different thread)
+2010-03-10 20:03:46.200 [thread 2] DEBUG my.Class - inside section 3
+2010-03-10 20:03:46.300 [thread 1] DEBUG my.Class - inside section 2
+2010-03-10 20:03:46.400 [thread 2] DEBUG my.Class - doing stuff (section 3)
+2010-03-10 20:03:46.500 [thread 1] DEBUG my.Class - doing stuff (section 2)
+2010-03-10 20:03:46.600 [thread 2] DEBUG my.Class - doing more stuff (section 3)
+2010-03-10 20:03:47.000 [thread 2] INFO my.Server - serving request 4 (in a different thread)
+2010-03-10 20:03:47.100 [thread 1] DEBUG my.Class - doing more stuff (section 2)
+2010-03-10 20:03:47.200 [thread 2] DEBUG my.Class - inside section 4
+2010-03-10 20:03:47.300 [thread 2] DEBUG my.Class - doing stuff (section 4)
+2010-03-10 20:03:47.400 [thread 2] DEBUG my.Class - doing more stuff (section 4)

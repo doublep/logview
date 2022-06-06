@@ -1806,7 +1806,8 @@ can use command `\\<logview-mode-map>\\[logview-set-section-view]' to change tha
   ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
   ;; interactively.
   (interactive "p\np")
-  (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0)))
+  (logview--std-temporarily-widening
+    (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0))))
 
 (defun logview-go-to-section-end (&optional n set-view-if-needed)
   "Move point to the end of current section.
@@ -1824,7 +1825,8 @@ can use command `\\<logview-mode-map>\\[logview-set-section-view]' to change tha
   ;; Second "p" is only needed so that SET-VIEW-IF-NEEDED is non-nil when called
   ;; interactively.
   (interactive "p\np")
-  (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0) t))
+  (logview--std-temporarily-widening
+    (logview--do-forward-section-as-command set-view-if-needed (if n (1- n) 0) t)))
 
 (defun logview-next-section (&optional n set-view-if-needed)
   "Move point down N (1 by default) log sections.
@@ -1835,7 +1837,8 @@ visible entry (usually the header) of the resulting section"
   (interactive "p\np")
   (unless n
     (setf n 1))
-  (logview--maybe-complain-about-movement n (logview--do-forward-section-as-command set-view-if-needed n) 'section))
+  (logview--std-temporarily-widening
+    (logview--maybe-complain-about-movement n (logview--do-forward-section-as-command set-view-if-needed n) 'section)))
 
 (defun logview-previous-section (&optional n set-view-if-needed)
   "Move point up N (1 by default) log sections.
@@ -1877,7 +1880,8 @@ visible entry (usually the header) of the section."
   (interactive "p")
   (unless (region-active-p)
     (push-mark))
-  (logview--do-forward-section-as-command set-view-if-needed most-negative-fixnum))
+  (logview--std-temporarily-widening
+    (logview--do-forward-section-as-command set-view-if-needed most-negative-fixnum)))
 
 (defun logview-last-section (&optional set-view-if-needed)
   "Move point to the last (visible) section in this thread.
@@ -1888,8 +1892,9 @@ visible entry (usually the header) of the section."
   (interactive "p")
   (unless (region-active-p)
     (push-mark))
-  (when (> (logview--do-forward-section-as-command set-view-if-needed most-positive-fixnum) 0)
-    (logview--forward-section 0)))
+  (logview--std-temporarily-widening
+    (when (> (logview--do-forward-section-as-command set-view-if-needed most-positive-fixnum) 0)
+      (logview--forward-section 0))))
 
 (defun logview-first-section-any-thread (&optional set-view-if-needed)
   "Move point to the first (visible) section regardless of thread.
@@ -1947,40 +1952,46 @@ the argument is positive, non-bound otherwise."
     ;; The logic of this code is pretty much impossible to follow.  Just trust it as long
     ;; as it passes the tests.
     (let* ((forward         (or (> n 0) (and (= n 0) go-to-end)))
+           (limit           (if forward (logview--point-max) (logview--point-min)))
            (section-thread  (when (logview-sections-thread-bound-p)
                               (logview--entry-group last-valid-entry last-valid-start logview--thread-group)))
            (header-filter   (cdr logview--section-header-filter))
            ;; Current section is always visible.
            (visible-section t)
            (callback        (lambda (entry start)
-                              ;; Ignore entries belonging to a "wrong" thread and continue.
-                              (or (and section-thread (not (string= (logview--entry-group entry start logview--thread-group) section-thread)))
-                                  (let ((header (funcall header-filter entry start)))
-                                    (if (and (= n 0) forward go-to-end header)
-                                        nil
-                                      (let ((invisible (invisible-p start)))
-                                        (when header
-                                          (unless (or invisible forward)
-                                            (setf visible-section t))
-                                          (when visible-section
-                                            (setf n (if forward (1- n) (1+ n))))
-                                          (when forward
-                                            (setf visible-section nil)))
-                                        (or invisible
-                                            (progn
-                                              (setf last-valid-entry entry
-                                                    last-valid-start start)
-                                              (when (or forward (not header))
-                                                (setf visible-section t))
-                                              (or (if forward
-                                                      (or (> n 0) go-to-end)
-                                                    (when (if go-to-end
-                                                              (or (< n 0) header)
-                                                            (or (<= n 0) (not header)))
-                                                      (when header
-                                                        (setf visible-section nil))
-                                                      t))
-                                                  (progn (setf n 0) nil)))))))))))
+                              ;; See comment above iterating calls.
+                              (and (if forward (<= start limit) (> (logview--entry-end entry start) limit))
+                                   ;; Ignore entries belonging to a "wrong" thread and continue.
+                                   (or (and section-thread (not (string= (logview--entry-group entry start logview--thread-group) section-thread)))
+                                       (let ((header (funcall header-filter entry start)))
+                                         (if (and (= n 0) forward go-to-end header)
+                                             nil
+                                           (let ((invisible (invisible-p start)))
+                                             (when header
+                                               (unless (or invisible forward)
+                                                 (setf visible-section t))
+                                               (when visible-section
+                                                 (setf n (if forward (1- n) (1+ n))))
+                                               (when forward
+                                                 (setf visible-section nil)))
+                                             (or invisible
+                                                 (progn
+                                                   (setf last-valid-entry entry
+                                                         last-valid-start start)
+                                                   (when (or forward (not header))
+                                                     (setf visible-section t))
+                                                   (or (if forward
+                                                           (or (> n 0) go-to-end)
+                                                         (when (if go-to-end
+                                                                   (or (< n 0) header)
+                                                                 (or (<= n 0) (not header)))
+                                                           (when header
+                                                             (setf visible-section nil))
+                                                           t))
+                                                       (progn (setf n 0) nil))))))))))))
+      ;; We don't skip invisible entries, since we need to detect section bounds even if
+      ;; the headers are filtered out.  Therefore, the callback needs to take narrowing
+      ;; into account explicitly.
       (if forward
           (logview--iterate-entries-forward last-valid-start callback nil nil t)
         (logview--iterate-entries-backward  last-valid-start callback))
@@ -2303,14 +2314,14 @@ entry after the gap."
     (logview--assert 'thread))
   (unless n
     (setq n 1))
-  (logview--locate-current-entry started-at-entry started-at
-    (let ((thread (when same-thread-only
-                    (logview--entry-group started-at-entry started-at logview--thread-group))))
-      (when (< n 0)
-        (logview--forward-entry -1 (when thread
-                                     (lambda (entry start)
-                                       (string-equal (logview--entry-group entry start logview--thread-group) thread)))))
-      (logview--std-temporarily-widening
+  (logview--std-temporarily-widening
+    (logview--locate-current-entry started-at-entry started-at
+      (let ((thread (when same-thread-only
+                      (logview--entry-group started-at-entry started-at logview--thread-group))))
+        (when (< n 0)
+          (logview--forward-entry -1 (when thread
+                                       (lambda (entry start)
+                                         (string-equal (logview--entry-group entry start logview--thread-group) thread)))))
         (logview--locate-current-entry entry start
           (let ((remaining (logview--forward-entry n (logview--entry-timestamp-gap-validator entry start thread)))
                 (success   (when logview--last-found-large-gap
@@ -2976,7 +2987,11 @@ returns non-nil."
   "Return the entry around POSITION and its beginning.
 If POSITION is nil, take the current value of point as the
 position, and also signal a user-level error if no entries can be
-located."
+located.
+
+This function may misbehave if any narrowing is in effect.  Make
+sure to cancel it using `logview--std-temporarily-widening' or
+something similar first."
   (let* ((entry-at (or position (point)))
          (entry    (or (get-text-property entry-at 'logview-entry)
                        (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
@@ -3013,7 +3028,7 @@ CALLBACK."
     (when entry+start
       (let ((entry    (car entry+start))
             (entry-at (cdr entry+start))
-            (limit    (1+ (buffer-size))))
+            (limit    (if only-visible (logview--point-max) (1+ (buffer-size)))))
         (unless (and skip-current (>= (setq entry-at (logview--entry-end entry entry-at)) limit))
           (while (progn (setq entry (or (get-text-property entry-at 'logview-entry)
                                         (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
@@ -3029,8 +3044,9 @@ See `logview--iterate-entries-forward' for details."
   (let ((entry+start (logview--do-locate-current-entry position)))
     (when entry+start
       (let ((entry    (car entry+start))
-            (entry-at (cdr entry+start)))
-        (unless (and skip-current (<= (setq entry-at (1- entry-at)) 0 ))
+            (entry-at (cdr entry+start))
+            (limit    (if only-visible (logview--point-min) 1)))
+        (unless (and skip-current (< (setq entry-at (1- entry-at)) limit))
           (while (and (setq entry (or (get-text-property entry-at 'logview-entry)
                                       (progn (logview--find-region-entries (max 1 (- entry-at logview--lazy-region-size)) (1+ entry-at) t)
                                              (get-text-property entry-at 'logview-entry))))
@@ -3039,7 +3055,7 @@ See `logview--iterate-entries-forward' for details."
                              (when (or (and only-visible (invisible-p entry-at))
                                        (and validator (not (funcall validator entry entry-at)))
                                        (funcall callback entry entry-at))
-                               (> (setq entry-at (1- entry-at)) 0))))))))))
+                               (>= (setq entry-at (1- entry-at)) limit))))))))))
 
 (defun logview--iterate-successive-entries (position n callback &optional only-visible validator)
   (when (/= n 0)
