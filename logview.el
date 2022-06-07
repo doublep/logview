@@ -1192,17 +1192,17 @@ the function will have significantly different effect."
   (logview-next-entry (if n (- n) -1)))
 
 (defun logview-next-as-important-entry (&optional n)
-  "Move point vertically down N 'as important' entries.
+  "Move point vertically down N ‘as important’ entries.
 Point is positioned at the beginning of the message of the
 resulting entry.
 
-Here 'as important' means any entry of level equal or higher than
+Here ‘as important’ means any entry of level equal or higher than
 that of the current entry.  For example, if you start moving from
 a warning, the function will stop on all warnings and errors in
-the buffer, but skip all other 'less important' entries.  If the
+the buffer, but skip all other ‘less important’ entries.  If the
 last used command is either `logview-next-as-important-entry' or
 `logview-previous-as-important-entry', list of what is considered
-'as important' is kept, otherwise it is recomputed anew."
+‘as important’ is kept, otherwise it is recomputed anew."
   (interactive "p")
   (logview--assert 'level)
   (unless n
@@ -1217,12 +1217,12 @@ last used command is either `logview-next-as-important-entry' or
       (logview--maybe-complain-about-movement n remaining 'as-important))))
 
 (defun logview-previous-as-important-entry (&optional n)
-  "Move point vertically up N 'as important' entries.
+  "Move point vertically up N ‘as important’ entries.
 Point is positioned at the beginning of the message of the
 resulting entry.
 
 See function `logview-next-as-important-entry' for definition of
-'as important'."
+‘as important’."
   (interactive "p")
   (logview-next-as-important-entry (if n (- n) -1)))
 
@@ -1406,9 +1406,9 @@ though."
   (logview--change-min-level-filter (logview--find-min-level 'trace)))
 
 (defun logview-show-only-as-important ()
-  "Show entries 'as important' as the current.
+  "Show entries ‘as important’ as the current.
 
-Here 'as important' means any entry of level equal or higher.
+Here ‘as important’ means any entry of level equal or higher.
 For example, if you invoke this function while current entry is a
 warning, all entries other than warnings and errors will be
 hidden."
