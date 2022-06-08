@@ -54,6 +54,9 @@
                    (require 'help-mode))
 (require 'datetime)
 (require 'extmap)
+;; For `string-trim' in earlier Emacs versions.
+(require 'subr-x)
+
 
 ;; We _append_ self to the list of mode rules so as to not clobber
 ;; other rules, as '.log' is a common file extension.  This also gives
@@ -1978,14 +1981,16 @@ is visible."
   (logview--ensure-section-view set-view-if-needed)
   (unless n
     (setf n 0))
-  ;; When movement fails, just give the error message and abort.
   (save-excursion
     (logview--std-temporarily-widening
+      ;; When movement fails, just give the error message and abort.
       (logview--maybe-complain-about-movement n (logview--forward-section n t) 'section))
-    (logview-narrow-up-to-this-entry))
-  (logview--std-temporarily-widening
-    (logview--do-forward-section-as-command nil 0))
-  (logview-narrow-from-this-entry))
+    (logview-narrow-up-to-this-entry)
+    (logview--std-temporarily-widening
+      (logview--do-forward-section-as-command nil 0)
+      (logview--locate-current-entry entry start
+        (message "Narrowed to section `%s'" (logview--trim-for-display (logview--entry-message entry start)))))
+    (logview-narrow-from-this-entry)))
 
 (defun logview-toggle-sections-thread-bound (&optional arg)
   "Toggle whether sections are bound to threads.
@@ -2544,7 +2549,14 @@ These are:
   (interactive)
   (logview--assert)
   (logview--std-temporarily-widening
-    (logview--maybe-pulse-current-entry)))
+    (logview--maybe-pulse-current-entry)
+    (when logview--section-header-filter
+      (save-excursion
+        (logview--forward-section 0)
+        (logview--locate-current-entry entry start
+          (if (funcall (cdr logview--section-header-filter) entry start)
+              (message "In section `%s'" (logview--trim-for-display (logview--entry-message entry start)))
+            (message (concat "In the first, unnamed section" (if (logview-sections-thread-bound-p) " of this thread" "")))))))))
 
 (defun logview-mode-help ()
   (interactive)
@@ -3157,6 +3169,25 @@ See `logview--iterate-entries-forward' for details."
 (defun logview--refontify-buffer ()
   (logview--std-temporarily-widening
     (font-lock-flush)))
+
+
+(defun logview--trim-for-display (message &optional max-length)
+  (unless max-length
+    (setf max-length 100))
+  (setf message (replace-regexp-in-string (rx (1+ whitespace)) " " (string-trim message)))
+  (if (<= (length message) max-length)
+      message
+    (with-temp-buffer
+      (insert message)
+      (goto-char 1)
+      (let ((cut-after (point)))
+        (while (and (search-forward-regexp (rx word eow) nil t)
+                    (when (<= (1- (point)) (- max-length 3))
+                      (setf cut-after (point)))))
+        ;; If we'd trimming too much because of too long word, better cut it in the middle.
+        (when (<= cut-after (/ max-length 2))
+          (setf cut-after (- max-length 3)))
+        (concat (buffer-substring (point-min) cut-after) "...")))))
 
 
 (defun logview--maybe-pulse-current-entry (&optional why)
