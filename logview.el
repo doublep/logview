@@ -715,11 +715,10 @@ this face is used."
 (defvar logview--lazy-region-size 50000)
 
 
-(defvar-local logview-filter-edit--main                      nil)
+(defvar-local logview-filter-edit--mode                      nil)
+(defvar-local logview-filter-edit--editing-views-for-submode nil)
 (defvar-local logview-filter-edit--parent-buffer             nil)
 (defvar-local logview-filter-edit--window-configuration      nil)
-(defvar-local logview-filter-edit--editing-views             nil)
-(defvar-local logview-filter-edit--editing-views-for-submode nil)
 
 (defvar logview-filter-edit--filters-hint-comment
   "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
@@ -1371,7 +1370,7 @@ no prefix means zero."
 (defun logview-edit-thread-narrowing-filters ()
   "Edit thread narrowing filters in a separate buffer."
   (interactive)
-  (logview--do-edit-filters nil))
+  (logview--do-edit-filters 'thread-narrowing-filters))
 
 
 
@@ -1484,7 +1483,7 @@ match the current text filters."
 (defun logview-edit-filters ()
   "Edit the current filters in a separate buffer."
   (interactive)
-  (logview--do-edit-filters t))
+  (logview--do-edit-filters 'main-filters))
 
 (defun logview-add-include-name-filter ()
   "Show only entries with name matching regular expression.
@@ -1814,10 +1813,10 @@ cannot be deleted using their quick access indices."
     (switch-to-buffer logview--view-editing-buffer)
     (unless (eq major-mode 'logview-filter-edit-mode)
       (logview-filter-edit-mode))
-    (setq logview-filter-edit--parent-buffer             self
-          logview-filter-edit--window-configuration      windows
-          logview-filter-edit--editing-views             t
-          logview-filter-edit--editing-views-for-submode submode)
+    (setf logview-filter-edit--mode                      'views
+          logview-filter-edit--editing-views-for-submode submode
+          logview-filter-edit--parent-buffer             self
+          logview-filter-edit--window-configuration      windows)
     (logview-filter-edit--initialize-text)))
 
 
@@ -3380,23 +3379,22 @@ next line, which is usually one line beyond END."
                       (forward-line)))
                   (funcall callback type line-begin begin (if (bolp) (logview--character-back-checked (point)) (point))))))))
 
-(defun logview--do-edit-filters (main)
+(defun logview--do-edit-filters (mode)
   (let ((self           (current-buffer))
         (windows        (current-window-configuration))
-        (filters        (if main logview--main-filter-text      logview--thread-narrowing-filter-text))
-        (editing-buffer (if main logview--filter-editing-buffer logview--thread-narrowing-filter-editing-buffer)))
+        (filters        (if (eq mode 'main-filters) logview--main-filter-text      logview--thread-narrowing-filter-text))
+        (editing-buffer (if (eq mode 'main-filters) logview--filter-editing-buffer logview--thread-narrowing-filter-editing-buffer)))
     (unless (buffer-live-p editing-buffer)
-      (setf (if main logview--filter-editing-buffer logview--thread-narrowing-filter-editing-buffer)
-            (setf editing-buffer (generate-new-buffer (format "%s: %s" (buffer-name) (if main "filters" "thread-narrowing filters"))))))
+      (setf (if (eq mode 'main-filters) logview--filter-editing-buffer logview--thread-narrowing-filter-editing-buffer)
+            (setf editing-buffer (generate-new-buffer (format "%s: %s" (buffer-name) (if (eq mode 'main-filters) "filters" "thread-narrowing filters"))))))
     (split-window-vertically)
     (other-window 1)
     (switch-to-buffer editing-buffer)
     (unless (eq major-mode 'logview-filter-edit-mode)
       (logview-filter-edit-mode))
-    (setf logview-filter-edit--main                 main
+    (setf logview-filter-edit--mode                 mode
           logview-filter-edit--parent-buffer        self
-          logview-filter-edit--window-configuration windows
-          logview-filter-edit--editing-views        nil)
+          logview-filter-edit--window-configuration windows)
     (logview-filter-edit--initialize-text filters)))
 
 (defun logview--canonical-filter-text (filters)
@@ -3820,13 +3818,14 @@ This list is preserved across Emacs session in
   (logview-filter-edit--quit nil))
 
 (defun logview-filter-edit--quit (save)
-  (let* ((parent  logview-filter-edit--parent-buffer)
+  (let* ((mode    logview-filter-edit--mode)
+         (parent  logview-filter-edit--parent-buffer)
          (windows logview-filter-edit--window-configuration)
          (do-quit (lambda ()
                     (kill-buffer)
                     (switch-to-buffer parent)
                     (set-window-configuration windows))))
-    (if logview-filter-edit--editing-views
+    (if (eq mode 'views)
         (progn (when save
                  (let ((new-views (save-excursion
                                     (goto-char 1)
@@ -3843,26 +3842,23 @@ This list is preserved across Emacs session in
                (funcall do-quit)
                ;; This takes effect only after quitting.
                (logview--update-mode-name))
-      (let ((main         logview-filter-edit--main)
-            (filters      (when save
+      (let ((filters      (when save
                             (buffer-substring-no-properties 1 (1+ (buffer-size)))))
             (hint-comment (logview-filter-edit--hint-comment)))
         (funcall do-quit)
         (when save
           (when (string-prefix-p hint-comment filters)
             (setf filters (substring filters (length hint-comment))))
-          (setf (if main logview--main-filter-text logview--thread-narrowing-filter-text) filters)
+          (setf (if (eq mode 'main-filters) logview--main-filter-text logview--thread-narrowing-filter-text) filters)
           (logview--parse-filters))))))
 
 (defun logview-filter-edit--initialize-text (&optional filter-text)
   (erase-buffer)
-  (if logview-filter-edit--editing-views
-      (progn (insert logview-filter-edit--views-hint-comment)
-             (logview--insert-view-definitions (when logview-filter-edit--editing-views-for-submode
-                                                 (lambda (view) (string= (plist-get view :submode)
-                                                                         logview-filter-edit--editing-views-for-submode)))))
-    (unless (string-prefix-p (logview-filter-edit--hint-comment) filter-text)
-      (insert (logview-filter-edit--hint-comment)))
+  (unless (and filter-text (string-prefix-p (logview-filter-edit--hint-comment) filter-text))
+    (insert (logview-filter-edit--hint-comment)))
+  (if (eq logview-filter-edit--mode 'views)
+      (logview--insert-view-definitions (when logview-filter-edit--editing-views-for-submode
+                                          (lambda (view) (string= (plist-get view :submode) logview-filter-edit--editing-views-for-submode))))
     (insert filter-text)
     (unless (bolp)
       (insert "\n")))
@@ -3890,7 +3886,7 @@ This list is preserved across Emacs session in
            (lambda (type line-begin begin end)
              (unless (pcase type
                        (`nil
-                        (when logview-filter-edit--editing-views
+                        (when (eq logview-filter-edit--mode 'views)
                           (save-excursion
                             (goto-char line-begin)
                             (cond ((looking-at logview--view-header-regexp)
@@ -3916,7 +3912,7 @@ This list is preserved across Emacs session in
                         (put-text-property begin end 'face nil)
                         t)
                        ((or "lv" "LV")
-                        (when logview-filter-edit--main
+                        (when (memq logview-filter-edit--mode '(main-filters views))
                           (put-text-property line-begin begin 'face 'logview-edit-filters-type-prefix)
                           (let ((level-string (buffer-substring-no-properties begin end))
                                 (known-levels (with-current-buffer logview-filter-edit--parent-buffer
@@ -3928,7 +3924,7 @@ This list is preserved across Emacs session in
                             (put-text-property begin end 'face (if level-string 'error nil)))
                           t))
                        (_
-                        (when (or logview-filter-edit--main (member type '("t+" "t-")))
+                        (when (or (memq logview-filter-edit--mode '(main-filters views)) (member type '("t+" "t-")))
                           (let* ((valid (logview--valid-regexp-p (logview--filter-regexp begin end))))
                             (goto-char begin)
                             (while (let ((from (point)))
@@ -3944,9 +3940,10 @@ This list is preserved across Emacs session in
              (< (point) region-end))))))))
 
 (defun logview-filter-edit--hint-comment ()
-  (if logview-filter-edit--main
-      logview-filter-edit--filters-hint-comment
-    logview-filter-edit--thread-narrowing-filters-hint-comment))
+  (pcase logview-filter-edit--mode
+    (`main-filters             logview-filter-edit--filters-hint-comment)
+    (`thread-narrowing-filters logview-filter-edit--thread-narrowing-filters-hint-comment)
+    (`views                    logview-filter-edit--views-hint-comment)))
 
 
 (add-hook 'kill-emacs-hook 'logview--kill-emacs-hook)
