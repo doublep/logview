@@ -1352,6 +1352,10 @@ no prefix means zero."
     (narrow-to-region from (point-max))))
 
 (defun logview-narrow-to-thread (&optional thread-name)
+  "Narrow to specific thread or widen if already narrowed.
+When called interactively, use the thread name of the current
+entry.  With a prefix argument, read the name from the minibuffer
+instead."
   (interactive (list (when current-prefix-arg
                        (logview--assert 'thread)
                        (read-from-minibuffer "Narrow to thread: " nil nil nil logview--thread-name-history
@@ -1365,15 +1369,21 @@ no prefix means zero."
         (unless entry
           (user-error "There is no current entry, don't know which thread to narrow to"))
         (setf thread-name (logview--entry-group entry start logview--thread-group)))))
-  (setf logview--thread-narrowing-filter-text (if thread-name
-                                                  (format "t+ %s\n" (rx-to-string `(seq bol ,thread-name eol) t))
-                                                ""))
-  (logview--parse-filters))
+  (logview--do-narrow-to-thread thread-name)
+  (if thread-name
+      (message "Narrowed to thread `%s'" thread-name)
+    (message "All thread-narrowing filters got reset")))
 
 (defun logview-edit-thread-narrowing-filters ()
   "Edit thread narrowing filters in a separate buffer."
   (interactive)
   (logview--do-edit-filters 'thread-narrowing-filters))
+
+(defun logview--do-narrow-to-thread (thread-name)
+  (setf logview--thread-narrowing-filter-text (if thread-name
+                                                  (format "t+ %s\n" (rx-to-string `(seq bol ,thread-name eol) t))
+                                                ""))
+  (logview--parse-filters))
 
 
 
@@ -1968,9 +1978,9 @@ is visible."
                      t))
   (logview-narrow-to-section-keep-threads n set-view-if-needed)
   (when (memq 'thread logview--submode-features)
-    (logview-narrow-to-thread (logview--std-temporarily-widening
-                                (logview--locate-current-entry entry start
-                                  (logview--entry-group entry start logview--thread-group))))))
+    (logview--do-narrow-to-thread (logview--std-temporarily-widening
+                                    (logview--locate-current-entry entry start
+                                      (logview--entry-group entry start logview--thread-group))))))
 
 (defun logview-narrow-to-section-keep-threads (&optional n set-view-if-needed)
   "Like `logview-narrow-to-section', but preserve thread narrowing."
@@ -1989,7 +1999,9 @@ is visible."
     (logview--std-temporarily-widening
       (logview--do-forward-section-as-command nil 0)
       (logview--locate-current-entry entry start
-        (message "Narrowed to section `%s'" (logview--trim-for-display (logview--entry-message entry start)))))
+        (if (funcall (cdr logview--section-header-filter) entry start)
+            (message "Narrowed to section `%s'" (logview--trim-for-display (logview--entry-message entry start)))
+          (message (concat "Narrowed to the first, unnamed section" (if (logview-sections-thread-bound-p) " of this thread" ""))))))
     (logview-narrow-from-this-entry)))
 
 (defun logview-toggle-sections-thread-bound (&optional arg)
