@@ -514,3 +514,36 @@ changed in each individual buffer.
 * Append log file tail to the buffer: `x`
 * Revert the buffer preserving active filters: `X`
 * Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
+
+
+== Locked narrowing in Emacs 29
+
+Emacs 29 (in development) has introduced locked narrowing as a way to
+improve performance.  At the same time, it broke compatibility by
+making function `widen` not always do what packages would expect from
+it.  This caused Logview, in particular, fail unpredictably, up to
+causing a full freeze in Emacs (where even `C-g` does nothing) from
+its fontification code.
+
+Locked narrowing restrictions currently cannot be lifted.  It is
+extremely difficult to adapt Logview to `widen` not widening as it has
+always does.  Therefore, Logview currently tries to _disable long-line
+optimizations in its buffers_.  I don’t know if it will always succeed
+or not; if it does not, Logview will now fail hard before causing more
+problems.
+
+If you experience problems with Logview still not being able to
+disable long-line optimization and, therefore, not working at all, you
+can add the following to your Emacs initialization code:
+
+    (setf long-line-threshold nil)
+
+Note that this will disable long-line optimization *everywhere*,
+though.  It’s up to you to decide whether that is more important than
+having Logview or not; as said, this is an emergency setting only,
+_probably_ Logview should work regardless.
+
+I have tried arguing with Emacs developers about this, but that is
+pointless, as I have found on this and several other occasions.  The
+only positive thing I got from it is that locked narrowing will become
+liftable in fontification code at least.  Somewhen.
