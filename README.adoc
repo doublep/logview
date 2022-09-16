@@ -516,6 +516,7 @@ changed in each individual buffer.
 * Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
 
 
+[#locked-narrowing]
 == Locked narrowing in Emacs 29
 
 Emacs 29 (in development) has introduced locked narrowing as a way to
