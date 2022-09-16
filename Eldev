@@ -1,5 +1,10 @@
 ; -*- mode: emacs-lisp; lexical-binding: t -*-
 
-(eldev-require-version "0.5")
+(eldev-require-version "1.2")
 
 (eldev-use-package-archive 'melpa)
+
+(setf eldev-release-post-release-commit-message "Post-release version bump."
+      eldev-release-post-release-commit (lambda (version)
+                                          (let ((eldev-release-min-version-size 3))
+                                            (eldev-release-next-snapshot-version-unless-already-snapshot version))))
