@@ -589,6 +589,16 @@ Variable `logview-pulse-entries' controls in which situations
 this face is used."
   :group 'logview-faces)
 
+(defface logview-unprocessed
+  '((t :inherit shadow))
+  "Face to highlight otherwise unfontified and unfiltered entries.
+Logview tries to make Emacs more responsive by periodically
+making \"pauses\" in its fontification and filtering process.  In
+large buffers with strict filters that exclude most entries, this
+can mean that you can sometimes see not-yet-processed entries.
+Those will be highlighted (or rather dimmed, with the default
+settings) with this face.")
+
 (defface logview-edit-filters-type-prefix
   '((((background dark))
      :background "#604000"
@@ -717,6 +727,11 @@ this face is used."
 ;; Not too small to avoid calling `logview--fontify-region' and
 ;; `logview--find-region-entries' often: calling and setup involves some overhead.
 (defvar logview--lazy-region-size 50000)
+(defvar logview--max-fontified-in-row 10)
+
+(defvar       logview--pending-refontifications nil)
+(defvar-local logview--postpone-fontification   nil)
+(defvar-local logview--num-fontified-in-row     0)
 
 
 (defvar-local logview-filter-edit--mode                      nil)
@@ -1152,6 +1167,7 @@ successfully.")
   (set (make-local-variable 'isearch-filter-predicate)          #'logview--isearch-filter-predicate)
   (add-hook 'after-change-functions #'logview--invalidate-region-entries nil t)
   (add-hook 'change-major-mode-hook #'logview--exiting-mode nil t)
+  (add-hook 'pre-command-hook #'logview--pre-command nil t)
   (logview--guess-submode)
   (logview--update-invisibility-spec)
   (unless (logview-initialized-p)
@@ -3697,6 +3713,12 @@ This list is preserved across Emacs session in
             (setq region-end (or (next-single-property-change region-end 'logview-entry) (point-max))))))
       (remove-list-of-text-properties region-start region-end '(logview-entry fontified)))))
 
+(defun logview--pre-command ()
+  ;; Reset this when fontification alternates with user-level commands.  If the user is
+  ;; able to issue those, we can keep fontifying, as this doesn't appear to interfere with
+  ;; editing too much.
+  (setf logview--num-fontified-in-row 0))
+
 (defun logview--fontify-region (region-start region-end loudly)
   (when (logview-initialized-p)
     ;; We are basically managing narrowing indirectly, by not fontifying further than
@@ -3717,91 +3739,98 @@ This list is preserved across Emacs session in
       ;; properties (e.g. faces) everywhere in the fontified region and that's normally
       ;; enough.
       (font-lock-unfontify-region region-start region-end)
-      (logview--std-altering
-        (save-match-data
-          (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
-            (when region-start
-              (let* ((have-timestamp              (memq 'timestamp logview--submode-features))
-                     (have-level                  (memq 'level     logview--submode-features))
-                     (have-name                   (memq 'name      logview--submode-features))
-                     (have-thread                 (memq 'thread    logview--submode-features))
-                     (validator                   (cdr logview--effective-filter))
-                     (difference-base             logview--timestamp-difference-base)
-                     (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
-                     (displaying-differences      (or difference-base difference-bases-per-thread))
-                     (difference-format-string    logview--timestamp-difference-format-string)
-                     (header-filter               (cdr logview--section-header-filter))
-                     (highlighter                 (cdr logview--highlighted-filter))
-                     (highlighted-part            logview-highlighted-entry-part)
-                     found-anything-visible)
-                (logview--iterate-entries-forward
-                 region-start
-                 (lambda (entry start)
-                   (let ((end (logview--entry-end entry start))
-                         filtered)
-                     (if (or (null validator) (funcall validator entry start))
-                         (progn
-                           (when have-level
-                             (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
-                               (put-text-property start end 'face (car entry-faces))
-                               (add-face-text-property (logview--entry-group-start entry start logview--level-group)
-                                                       (logview--entry-group-end   entry start logview--level-group)
-                                                       (cdr entry-faces))))
-                           (when have-timestamp
-                             (let ((from (logview--entry-group-start entry start logview--timestamp-group))
-                                   (to   (logview--entry-group-end   entry start logview--timestamp-group))
-                                   timestamp-replaced)
-                               (add-face-text-property from to 'logview-timestamp)
-                               (when displaying-differences
-                                 (let ((difference-base (or (when difference-bases-per-thread
-                                                              (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
-                                                            difference-base)))
-                                   (when (and difference-base (not (= (cdr difference-base) start)))
-                                     ;; FIXME: It is possible that fractionals are not the last
-                                     ;;        thing in the timestamp, in which case it would be
-                                     ;;        nicer to add some spaces on the right. However,
-                                     ;;        it's not easy to do and is also quite unlikely,
-                                     ;;        so ignoring that for now.
-                                     (let* ((difference        (- (logview--entry-timestamp entry start)
-                                                                  (logview--entry-timestamp (car difference-base) (cdr difference-base))))
-                                            (difference-string (format difference-format-string difference))
-                                            (length-delta      (- to from (length difference-string))))
-                                       (when (> length-delta 0)
-                                         (setq difference-string (concat (make-string length-delta ? ) difference-string)))
-                                       (put-text-property from to 'display difference-string)
-                                       (setq timestamp-replaced t)))))
-                               (unless timestamp-replaced
-                                 (remove-list-of-text-properties from to '(display)))))
-                           (when have-name
-                             (add-face-text-property (logview--entry-group-start entry start logview--name-group)
-                                                     (logview--entry-group-end   entry start logview--name-group)
-                                                     'logview-name))
-                           (when have-thread
-                             (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
-                                                     (logview--entry-group-end   entry start logview--thread-group)
-                                                     'logview-thread))
-                           (when (and header-filter (funcall header-filter entry start))
-                             (add-face-text-property start end 'logview-section))
-                           (when (and highlighter (funcall highlighter entry start))
-                             (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
-                                                     (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
-                                                     'logview-highlight)))
-                       (setq filtered t))
-                     (when (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
-                       (setq found-anything-visible t))
-                     (or (< end region-end)
-                         ;; There appears to be a bug in displaying code for the unlikely case
-                         ;; that fontifying function hides all the text in the region it has
-                         ;; been called for: Emacs still displays an empty line or at least the
-                         ;; ellipses to denote hidden text (i.e. not merged with the previous
-                         ;; ellipses).  So, to avoid this bug we just continue.  Besides, font
-                         ;; lock would do this anyway.
-                         (not found-anything-visible))))))))
-          ;; `font-lock-default-fontify-region' includes some other calls that we simply
-          ;; drop for now.  It is unlikely that e.g. a syntax table would be useful here.
-          (unless (equal font-lock-keywords '(t nil))
-            ;; This is largely for derived modes.  Logview itself doesn't define any keywords.
-            (font-lock-fontify-keywords-region region-start region-end loudly))))))
+      (if logview--postpone-fontification
+          (progn (add-face-text-property region-start region-end 'logview-unprocessed)
+                 (unless logview--pending-refontifications
+                   (run-with-idle-timer 0 nil #'logview--schedule-pending-refontification))
+                 (push (list (current-buffer) region-start region-end) logview--pending-refontifications))
+        (logview--std-altering
+          (save-match-data
+            (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
+              (when region-start
+                (let* ((have-timestamp              (memq 'timestamp logview--submode-features))
+                       (have-level                  (memq 'level     logview--submode-features))
+                       (have-name                   (memq 'name      logview--submode-features))
+                       (have-thread                 (memq 'thread    logview--submode-features))
+                       (validator                   (cdr logview--effective-filter))
+                       (difference-base             logview--timestamp-difference-base)
+                       (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
+                       (displaying-differences      (or difference-base difference-bases-per-thread))
+                       (difference-format-string    logview--timestamp-difference-format-string)
+                       (header-filter               (cdr logview--section-header-filter))
+                       (highlighter                 (cdr logview--highlighted-filter))
+                       (highlighted-part            logview-highlighted-entry-part))
+                  (logview--iterate-entries-forward
+                   region-start
+                   (lambda (entry start)
+                     (let ((end (logview--entry-end entry start))
+                           filtered)
+                       (if (or (null validator) (funcall validator entry start))
+                           (progn
+                             (when have-level
+                               (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
+                                 (put-text-property start end 'face (car entry-faces))
+                                 (add-face-text-property (logview--entry-group-start entry start logview--level-group)
+                                                         (logview--entry-group-end   entry start logview--level-group)
+                                                         (cdr entry-faces))))
+                             (when have-timestamp
+                               (let ((from (logview--entry-group-start entry start logview--timestamp-group))
+                                     (to   (logview--entry-group-end   entry start logview--timestamp-group))
+                                     timestamp-replaced)
+                                 (add-face-text-property from to 'logview-timestamp)
+                                 (when displaying-differences
+                                   (let ((difference-base (or (when difference-bases-per-thread
+                                                                (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
+                                                              difference-base)))
+                                     (when (and difference-base (not (= (cdr difference-base) start)))
+                                       ;; FIXME: It is possible that fractionals are not the last
+                                       ;;        thing in the timestamp, in which case it would be
+                                       ;;        nicer to add some spaces on the right. However,
+                                       ;;        it's not easy to do and is also quite unlikely,
+                                       ;;        so ignoring that for now.
+                                       (let* ((difference        (- (logview--entry-timestamp entry start)
+                                                                    (logview--entry-timestamp (car difference-base) (cdr difference-base))))
+                                              (difference-string (format difference-format-string difference))
+                                              (length-delta      (- to from (length difference-string))))
+                                         (when (> length-delta 0)
+                                           (setq difference-string (concat (make-string length-delta ? ) difference-string)))
+                                         (put-text-property from to 'display difference-string)
+                                         (setq timestamp-replaced t)))))
+                                 (unless timestamp-replaced
+                                   (remove-list-of-text-properties from to '(display)))))
+                             (when have-name
+                               (add-face-text-property (logview--entry-group-start entry start logview--name-group)
+                                                       (logview--entry-group-end   entry start logview--name-group)
+                                                       'logview-name))
+                             (when have-thread
+                               (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
+                                                       (logview--entry-group-end   entry start logview--thread-group)
+                                                       'logview-thread))
+                             (when (and header-filter (funcall header-filter entry start))
+                               (add-face-text-property start end 'logview-section))
+                             (when (and highlighter (funcall highlighter entry start))
+                               (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
+                                                       (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
+                                                       'logview-highlight)))
+                         (setq filtered t))
+                       (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
+                       ;; There appears to be a bug in displaying code for the case that
+                       ;; fontifying function hides all the text in the region it has been
+                       ;; called for: Emacs still displays an empty line or at least the
+                       ;; ellipses to denote hidden text (i.e. not merged with the
+                       ;; previous ellipses).  Previously, we'd work around this by
+                       ;; continuing past the region.  However, now we stop anyway because
+                       ;; of responsiveness improvements: that is more important than
+                       ;; minor displaying glitches.
+                       (< end region-end)))))))
+            (setf logview--num-fontified-in-row (1+ (or logview--num-fontified-in-row 0)))
+            (when (or (input-pending-p) (>= logview--num-fontified-in-row logview--max-fontified-in-row))
+              (setf logview--postpone-fontification t))
+            ;; `font-lock-default-fontify-region' includes some other calls that we simply
+            ;; drop for now.  It is unlikely that e.g. a syntax table would be useful here.
+            (unless (equal font-lock-keywords '(t nil))
+              ;; This is largely for derived modes.  Logview itself doesn't define any keywords.
+              (font-lock-fontify-keywords-region region-start region-end loudly)))))))
   `(jit-lock-bounds ,region-start . ,region-end))
 
 ;; Returns non-nil if any part of the entry is visible as a result.
@@ -3834,6 +3863,26 @@ This list is preserved across Emacs session in
       (push 'logview-details new-invisible)
       (put-text-property first-line-end-lf-back (logview--character-back end) 'invisible new-invisible))
     (not fully-invisible)))
+
+(defun logview--schedule-pending-refontification ()
+  (if (input-pending-p)
+      ;; To improve responsibility, do nothing this time, but reschedule ourselves with a
+      ;; little bit of delay, especially if currently in a non-Logview mode (or editing
+      ;; filters etc.).
+      (run-with-idle-timer (if (eq major-mode 'logview-mode) 0 1) nil #'logview--schedule-pending-refontification)
+    (let ((refontifications logview--pending-refontifications))
+      (dolist (entry refontifications)
+        (let ((buffer       (nth 0 entry))
+              (region-start (nth 1 entry))
+              (region-end   (nth 2 entry)))
+          (when (buffer-live-p buffer)
+            (with-current-buffer buffer
+              (setf logview--postpone-fontification nil
+                    logview--num-fontified-in-row   0)
+              (logview--temporarily-widening
+                (logview--std-altering
+                  (remove-list-of-text-properties region-start region-end '(fontified))))))))
+      (setf logview--pending-refontifications nil))))
 
 (defun logview--buffer-substring-filter (begin end delete)
   "Optionally remove invisible text from the substring."
@@ -4019,8 +4068,8 @@ This list is preserved across Emacs session in
     (`views                    logview-filter-edit--views-hint-comment)))
 
 
-(add-hook 'kill-emacs-hook 'logview--kill-emacs-hook)
-(run-with-idle-timer 30 t 'logview--save-views-if-needed)
+(add-hook 'kill-emacs-hook #'logview--kill-emacs-hook)
+(run-with-idle-timer 30 t #'logview--save-views-if-needed)
 
 
 (provide 'logview)
