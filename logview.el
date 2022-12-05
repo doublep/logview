@@ -613,6 +613,11 @@ settings) with this face.")
 
 ;;; Internal variables and constants.
 
+;; {LOCKED-NARROWING}
+;; Earlier Emacs 29 snapshots: need to set this variable to nil.
+(defvar long-line-threshold)
+(declare-function narrowing-unlock (tag))
+
 ;; Keep in sync with `logview--entry-*' and `logview--find-region-entries'.
 (defconst logview--timestamp-group 1)
 (defconst logview--level-group     2)
@@ -865,7 +870,7 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
 ;;; Macros and inlined functions.
 
 ;; Lisp is sensitive to declaration order, so these are collected at
-;; the beginnig of the file.
+;; the beginning of the file.
 
 (defmacro logview--std-altering (&rest body)
   (declare (indent 0) (debug t))
@@ -882,15 +887,28 @@ inside BODY.  In most cases (also if not sure) you should use
 macro `logview--std-temporarily-widening' instead."
   (declare (indent 0) (debug t))
   `(save-restriction
-     (widen)
-     ,@(when (>= emacs-major-version 29)
-         ;; It is better to fail hard now than to face an arbitrary failure later.  In
-         ;; particular, an infinite loop in fontification code can irreversibly freeze
-         ;; Emacs, but this is of course "not a bug":
-         ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=57804
-         `((unless (and (= (point-min) 1) (= (point-max) (1+ (buffer-size))))
-             (error "Logview is incompatible with locked narrowing; see https://github.com/doublep/logview#locked-narrowing"))))
+     (logview--do-widen)
      ,@body))
+
+(defun logview--do-widen ()
+  ;; {LOCKED-NARROWING}
+  (when (fboundp 'narrowing-unlock)
+    ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all tags
+    ;; I could find in Emacs source code.  Normally this should be enough, but there is
+    ;; obviously no guarantee with function `narrowing-lock' being part of public Lisp
+    ;; interface.
+    (narrowing-unlock 'fontification-functions)
+    (narrowing-unlock 'pre-command-hook)
+    (narrowing-unlock 'post-command-hook))
+  (widen)
+  ;; If still not widened, then it is better to fail hard now than to face an arbitrary
+  ;; and hard to predict failure later.  In particular, an infinite loop in fontification
+  ;; code can irreversibly freeze Emacs, but this is of course "not a bug":
+  ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=57804.  They care about responsiveness
+  ;; with long lines, but not here, right.
+  (unless (and (= (point-min) 1) (= (point-max) (1+ (buffer-size))))
+    ;; DONOTRELEASE: Document changes.
+    (error "Logview is incompatible with locked narrowing; see https://github.com/doublep/logview#locked-narrowing")))
 
 (defmacro logview--std-temporarily-widening (&rest body)
   "Execute BODY with the current buffer fully widened.
@@ -1150,15 +1168,14 @@ interfere with editing) or if submode wasn't guessed
 successfully.")
 
 
-;; Emacs 29 (snapshots); need to set it to nil.
-(defvar long-line-threshold)
-
 ;;;###autoload
 (define-derived-mode logview-mode nil "Logview"
   "Major mode for viewing and filtering various log files."
-  ;; Logview is incompatible with locked narrowing of Emacs 29.  Set this variable in hope
-  ;; this prevents it from ever happening.  See `logview--temporarily-widening'.
-  (when (boundp 'long-line-threshold)
+  ;; {LOCKED-NARROWING}
+  ;; Logview is incompatible with locked narrowing of Emacs 29.  Later snapshots sort of
+  ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set
+  ;; this variable in hope this prevents it from ever happening.
+  (when (and (boundp 'long-line-threshold) (not (fboundp 'narrowing-unlock)))
     (setq-local long-line-threshold nil))
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
