@@ -522,29 +522,26 @@ changed in each individual buffer.
 Emacs 29 (in development) has introduced locked narrowing as a way to
 improve performance.  At the same time, it broke compatibility by
 making function `widen` not always do what packages would expect from
-it.  This caused Logview, in particular, fail unpredictably, up to
-causing a full freeze in Emacs (where even `C-g` does nothing) from
-its fontification code.
+it.
 
-Locked narrowing restrictions currently cannot be lifted.  It is
-extremely difficult to adapt Logview to `widen` not widening as it has
-always does.  Therefore, Logview currently tries to _disable long-line
-optimizations in its buffers_.  I don’t know if it will always succeed
-or not; if it does not, Logview will now fail hard before causing more
-problems.
+It is extremely difficult to adapt Logview to `widen` not widening as
+it has always does.  Or likely even impossible without completely
+redesigning the mode, sacrificing lazy filtering in the process.
 
-If you experience problems with Logview still not being able to
-disable long-line optimization and, therefore, not working at all, you
-can add the following to your Emacs initialization code:
+Locked narrowing restrictions can be lifted, but for this you need to
+know the “tag” used to install them.  There is no way to find the tag
+(unless you have locked with it yourself and thus just know), but at
+least Emacs itself uses only a few hardcoded tags.  Logview tries to
+unlock all of those.  However, if restrictions are still locked after
+that, Logview will fail before causing more (and unpredictable)
+problems: e.g. previously it could even cause a full freeze in Emacs
+(where even `C-g` does nothing) from its fontification code.
 
-    (setf long-line-threshold nil)
-
-Note that this will disable long-line optimization *everywhere*,
-though.  It’s up to you to decide whether that is more important than
-having Logview or not; as said, this is an emergency setting only,
-_probably_ Logview should work regardless.
+Normally, such errors should not happen now, but if they do then
+either Emacs invented yet another place where it has to
+[line-through]#break everything# lock restrictions, or this has made
+it into some minor mode you use (they made function `narrowing-lock`
+public for everyone to try and break other code).
 
 I have tried arguing with Emacs developers about this, but that is
-pointless, as I have found on this and several other occasions.  The
-only positive thing I got from it is that locked narrowing will become
-liftable in fontification code at least.  Somewhen.
+pointless, as I have found on this and several other occasions.

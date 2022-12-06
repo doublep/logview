@@ -907,7 +907,6 @@ macro `logview--std-temporarily-widening' instead."
   ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=57804.  They care about responsiveness
   ;; with long lines, but not here, right.
   (unless (and (= (point-min) 1) (= (point-max) (1+ (buffer-size))))
-    ;; DONOTRELEASE: Document changes.
     (error "Logview is incompatible with locked narrowing; see https://github.com/doublep/logview#locked-narrowing")))
 
 (defmacro logview--std-temporarily-widening (&rest body)
