@@ -35,3 +35,7 @@ jobs:
       run: |
         eldev -p -dtT -C test --expect 20
         eldev -dtT -C compile --set all --warnings-as-errors
+
+    - name: Lint the project
+      run: |
+        eldev -p -dtT -C lint

@@ -8,3 +8,6 @@
       eldev-release-post-release-commit (lambda (version)
                                           (let ((eldev-release-min-version-size 3))
                                             (eldev-release-next-snapshot-version-unless-already-snapshot version))))
+
+;; Only care about regular expression validity.
+(setf eldev-lint-default '(re))
