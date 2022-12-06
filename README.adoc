@@ -539,9 +539,9 @@ problems: e.g. previously it could even cause a full freeze in Emacs
 
 Normally, such errors should not happen now, but if they do then
 either Emacs invented yet another place where it has to
-[line-through]#break everything# lock restrictions, or this has made
-it into some minor mode you use (they made function `narrowing-lock`
-public for everyone to try and break other code).
++++<del>+++break everything+++</del>+++ lock restrictions, or this has
+made it into some minor mode you use (they made function
+`narrowing-lock` public for everyone to try and break other code).
 
 I have tried arguing with Emacs developers about this, but that is
 pointless, as I have found on this and several other occasions.
