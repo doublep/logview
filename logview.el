@@ -129,7 +129,7 @@ This alist value is used as the fallback for customizable
                     (nil                                      "MMM d h:mm:ss a")
                     (nil                                      "h:mm:ss a")))
       (push (list (or (car data) (cadr data)) (cons 'java-pattern (cadr data))) formats)
-      (when (string-match "\\." (cadr data))
+      (when (string-match-p "\\." (cadr data))
         (nconc (car formats) '((datetime-options :any-decimal-separator t))))
       (when (car data)
         (nconc (car formats) (list (list 'aliases (cadr data))))))
@@ -381,9 +381,9 @@ Setting this to zero makes the mode match against all
 (defcustom logview-auto-revert-mode nil
   "Automatically put recognized buffers into Auto-Revert mode.
 Buffers for which no appropriate submode can be guessed are not
-affected and buffers not associated with files.  Having this set
-to \"Off\" doesn't prevent Global Auto-Revert mode from affecting
-Logview buffers.
+affected as well buffers not associated with files.  Having this
+set to \"Off\" doesn't prevent Global Auto-Revert mode from
+affecting Logview buffers.
 
 Whenever new text is added to the buffer, it is automatically
 parsed, highlighted and all currently active filters are applied
@@ -1541,7 +1541,7 @@ match the current text filters."
           (setf logview--main-filter-text
                 (concat (substring logview--main-filter-text 0 level-filter-at)
                         (substring logview--main-filter-text
-                                   (or (string-match "^" logview--main-filter-text level-filter-line-end)
+                                   (or (string-match-p "^" logview--main-filter-text level-filter-line-end)
                                        level-filter-line-end))))
         (setq level-filter-at 0))
       (when min-level
@@ -1620,7 +1620,7 @@ that doesn't match any of entered expression."
                                                                             (message . logview--message-regexp-history)))))))
     (unless (logview--valid-regexp-p regexp)
       (user-error "Invalid regular expression"))
-    (when (and (memq type '(name thread)) (string-match "\n" regexp))
+    (when (and (memq type '(name thread)) (string-match-p "\n" regexp))
       (user-error "Regular expression must not span several lines"))
     (setf logview--main-filter-text (concat logview--main-filter-text
                                             (when (and logview--main-filter-text
@@ -1632,7 +1632,7 @@ that doesn't match any of entered expression."
 ;; This must have been a standard function.
 (defun logview--valid-regexp-p (regexp)
   (ignore-errors
-    (string-match regexp "")
+    (string-match-p regexp "")
     t))
 
 
@@ -2571,7 +2571,7 @@ minibuffer."
                        (logview--completing-read "Submode name: " submodes nil t nil 'logview--submode-name-history))))
   (let ((submode-definition (logview--get-split-alists submode "submode" logview-additional-submodes logview-std-submodes))
         timestamp-definition)
-    (when (string-match logview--timestamp-entry-part-regexp (cdr (assq 'format submode-definition)))
+    (when (string-match-p logview--timestamp-entry-part-regexp (cdr (assq 'format submode-definition)))
       (unless timestamp
         (unless (called-interactively-p 'interactive)
           (error "Must specify a timestamp format for submode `%s'" submode))
@@ -2680,7 +2680,7 @@ These are:
                   keys)
               (dolist (alternative (where-is-internal symbol logview-mode-map))
                 (setq alternative (key-description alternative))
-                (let ((matches-preferred-keys (when preferred-keys (string-match preferred-keys alternative))))
+                (let ((matches-preferred-keys (when preferred-keys (string-match-p preferred-keys alternative))))
                   (when (or (< (length alternative) best-length)
                             (and (= (length alternative) best-length)
                                  matches-preferred-keys
@@ -2913,7 +2913,7 @@ returns non-nil."
     (when (< search-from (length format))
       (funcall add-text-part search-from nil))
     ;; Unless `MESSAGE' field is used explicitly, behave as if format string ends with whitespace.
-    (unless (or have-explicit-message (string-match "[ \t]$" format))
+    (unless (or have-explicit-message (string-match-p "[ \t]$" format))
       (push "[ \t]+" parts))
     (setq parts (nreverse parts))
     (when timestamp-at
@@ -2921,7 +2921,7 @@ returns non-nil."
       ;; the test line doesn't have even two digits at the expected
       ;; place, don't even loop through all the timestamp options.
       (setcar timestamp-at ".*[0-9][0-9].*")
-      (when (and test-line (not (string-match (apply #'concat parts) test-line)))
+      (when (and test-line (not (string-match-p (apply #'concat parts) test-line)))
         (setq cannot-match t)))
     (unless cannot-match
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
@@ -2943,7 +2943,7 @@ returns non-nil."
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
             (let ((regexp      (apply #'concat parts))
                   (level-index 0))
-              (when (or (null test-line) (string-match regexp test-line))
+              (when (or (null test-line) (string-match-p regexp test-line))
                 (setq logview--submode-name           name
                       logview--process-buffer-changes t
                       logview--entry-regexp           regexp
@@ -3300,8 +3300,8 @@ See `logview--iterate-entries-forward' for details."
     (when (consp buffer-invisibility-spec)
       (let ((case-fold-search nil))
         (dolist (element buffer-invisibility-spec)
-          (unless (string-match "^logview-" (symbol-name (cond ((symbolp element)            element)
-                                                               ((symbolp (car-safe element)) (car-safe element)))))
+          (unless (string-match-p "^logview-" (symbol-name (cond ((symbolp element)            element)
+                                                                 ((symbolp (car-safe element)) (car-safe element)))))
             (push element invisibility-spec)))))
     (setq buffer-invisibility-spec (nreverse invisibility-spec))
     ;; This weird-looking command was suggested in
@@ -3428,9 +3428,9 @@ See `logview--iterate-entries-forward' for details."
            (string-form    (if (and include-regexps exclude-regexps) 'string string-fetcher))
            subclauses)
       (when include-regexps
-        (push `(string-match ,(logview--build-filter-regexp include-regexps) ,string-form) subclauses))
+        (push `(string-match-p ,(logview--build-filter-regexp include-regexps) ,string-form) subclauses))
       (when exclude-regexps
-        (push `(not (string-match ,(logview--build-filter-regexp exclude-regexps) ,string-form)) subclauses))
+        (push `(not (string-match-p ,(logview--build-filter-regexp exclude-regexps) ,string-form)) subclauses))
       (let ((clause (if (cdr subclauses) `(and ,@(nreverse subclauses)) (car subclauses))))
         (when (eq string-form 'string)
           (setq clause `(let ((string ,string-fetcher)) ,clause)))
@@ -3863,7 +3863,7 @@ This list is preserved across Emacs session in
              (setq entry-manually-hidden t))
             ((and (eq details-manually-hidden 'propagate) (eq element logview--hidden-details-symbol))
              (setq details-manually-hidden t))
-            ((not (and (symbolp element) (string-match "^logview-" (symbol-name element))))
+            ((not (and (symbolp element) (string-match-p "^logview-" (symbol-name element))))
              (push element new-invisible))))
     (when (eq entry-manually-hidden t)
       (push logview--hidden-entry-symbol new-invisible)
