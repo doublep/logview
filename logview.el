@@ -85,6 +85,16 @@
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
 
+(defvar logview-std-json-submodes
+  (when (json-available-p)
+    '(("JSON" . ((format . json)
+		 (paths . ((timestamp . (timestamp))
+			   (thread    . (thread))
+			   (level     . (level))
+			   (name      . (logger))
+			   (message   . (message))))
+		 (levels . "SLF4J"))))))
+
 (defvar logview-std-level-mappings
   '(("SLF4J"    . ((error       "ERROR")
                    (warning     "WARN")
@@ -664,8 +674,11 @@ settings) with this face.")
 (defvar-local logview--point-max nil)
 
 (defvar-local logview--submode-name nil)
+(defvar-local logview--submode-definition nil)
+(defvar-local logview--submode-type nil)
 (defvar-local logview--entry-regexp nil)
 (defvar-local logview--submode-features nil)
+(defvar-local logview--timestamp-option nil)
 
 (defvar-local logview--submode-level-data nil
   "An alist of level strings to (INDEX . (ENTRY-FACE . STRING-FACE)).")
@@ -1200,7 +1213,7 @@ successfully.")
       (remove-list-of-text-properties (point-min) (point-max) '(invisible display logview-entry)))))
 
 (defun logview-initialized-p ()
-  (not (null logview--entry-regexp)))
+  (not (null logview--submode-name)))
 
 
 
@@ -2822,7 +2835,7 @@ returns non-nil."
                                                        (when (logview--initialize-submode name definition standard-timestamps line)
                                                          (setf promising t))
                                                      (error (warn (error-message-string error)))))
-                                                 logview-additional-submodes logview-std-submodes))
+                                                 logview-additional-submodes logview-std-submodes logview-std-json-submodes))
                 (when promising
                   (setf remaining-attemps (1- remaining-attemps))))
               (forward-line 1)
@@ -2830,16 +2843,18 @@ returns non-nil."
       ;; This is done regardless of whether guessing has succeeded or not.
       (setf logview--custom-submode-guessed-with logview--custom-submode-revision))))
 
-;; Returns non-nil if TEST-LINE is "promising".
 (defun logview--initialize-submode (name definition standard-timestamps &optional test-line)
+  "Try to match TEST-LINE to definition.
+   Return non-nil if TEST-LINE is 'promising', or throw 'success on a good match."
+  (let ((format (cdr (assq 'format definition))))
+    (if (eq format 'json)
+	(logview--initialize-json-submode name definition standard-timestamps test-line)
+      (logview--initialize-text-submode name definition standard-timestamps test-line))))
+
+;; Returns non-nil if TEST-LINE is "promising".
+(defun logview--initialize-text-submode (name definition standard-timestamps &optional test-line)
   (let* ((format            (cdr (assq 'format    definition)))
-         (timestamp-names   (when test-line (cdr (assq 'timestamp definition))))
-         (timestamp-options (if timestamp-names
-                                (mapcar (lambda (name)
-                                          (logview--get-split-alists name "timestamp format"
-                                                                     logview-additional-timestamp-formats logview-std-timestamp-formats))
-                                        timestamp-names)
-                              standard-timestamps))
+         (timestamp-options (logview--timestamp-options definition standard-timestamps test-line))
          (search-from       0)
          (parts             (list "^"))
          next
@@ -2926,55 +2941,84 @@ returns non-nil."
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
         (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
                (timestamp-locale  (cdr (assq 'locale timestamp-option)))
-               (timestamp-regexp  (if timestamp-pattern
-                                      (condition-case error
-                                          (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
-                                                 :locale timestamp-locale
-                                                 (append (cdr (assq 'datetime-options timestamp-option)) logview--datetime-matching-options))
-                                        ;; 'datetime' doesn't mention the erroneous pattern to keep
-                                        ;; the error message concise.  Let's do it ourselves.
-                                        (error (warn "In Java timestamp pattern '%s': %s"
-                                                     (cdr timestamp-pattern) (error-message-string error))
-                                               nil))
-                                    (cdr (assq 'regexp timestamp-option)))))
+               (timestamp-regexp  (logview--timestamp-regexp timestamp-option)))
           (when (or timestamp-regexp (null timestamp-at))
             (when timestamp-at
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
             (let ((regexp      (apply #'concat parts))
                   (level-index 0))
               (when (or (null test-line) (string-match-p regexp test-line))
-                (setq logview--submode-name           name
-                      logview--process-buffer-changes t
-                      logview--entry-regexp           regexp
-                      logview--submode-features       features
-                      logview--submode-level-data     nil)
-                (logview--update-mode-name)
-                (when (memq 'level features)
-                  (dolist (final-level logview--final-levels)
-                    (dolist (level (cdr (assoc final-level levels)))
-                      (push (cons level (cons level-index (cons (intern (format "logview-%s-entry" (symbol-name final-level)))
-                                                                (intern (format "logview-level-%s" (symbol-name final-level))))))
-                            logview--submode-level-data)
-                      (setq level-index (1+ level-index)))))
-                (setq logview--submode-level-faces (make-vector level-index nil))
-                (dolist (level-data logview--submode-level-data)
-                  (aset logview--submode-level-faces (cadr level-data) (cddr level-data)))
-                (when (memq 'timestamp features)
-                  (let ((num-fractionals (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern) logview--datetime-parsing-options)))
-                    (setq logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
-                                                                             :locale timestamp-locale :timezone 'system
-                                                                             logview--datetime-parsing-options)
-                          logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
-                          logview--timestamp-gap-format-string        (format "%%.%df" num-fractionals))))
-                (read-only-mode 1)
-                (when buffer-file-name
-                  (pcase logview-auto-revert-mode
-                    (`auto-revert-mode      (auto-revert-mode      1))
-                    (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
-                (logview--refilter)
-                (throw 'success nil))))))
+		(logview--submode-success name definition 'text regexp features timestamp-option)
+		(throw 'success nil))))))
       ;; "Promising" line.
       t)))
+
+(defun logview--initialize-json-submode (name definition standard-timestamps &optional test-line)
+  "Try to match TEST-LINE to a json definition."
+  (let ((paths (cdr (assq 'paths definition)))
+	(parsed (condition-case error
+		    (json-parse-string test-line :object-type 'alist)
+		  (json-parse-error nil)))
+	features levels have-explicit-message timestamp)
+    (dolist (path paths)
+      (let ((feature (car path))
+	    (value (logview--get-alist-path (cdr path) parsed)))
+	(when (or (null test-line) value)
+	  (push feature features)
+	  (cl-case feature
+	    (timestamp (setq timestamp value))
+	    (level (setq levels (logview--get-split-alists (cdr (assq 'levels definition)) "level mapping"
+							   logview-additional-level-mappings logview-std-level-mappings)))))))
+    (when (= (length paths) (length features))
+      (let* ((timestamp-options (logview--timestamp-options definition standard-timestamps test-line))
+	     (timestamp-option (catch 'timestamp-format-found
+				 (dolist (option (when timestamp timestamp-options))
+				   (let ((regexp (logview--timestamp-regexp option)))
+                                   (when (or (null test-line) (string-match-p regexp timestamp))
+				     (throw 'timestamp-format-found option)))))))
+	(when timestamp-option
+	  (logview--submode-success name definition 'json nil features timestamp-option)
+	  (throw 'success nil)))))
+  nil)
+
+(defun logview--submode-success (name definition submode-type entry-regexp features timestamp-option)
+  "Set up logview-mode's buffer-local variables for a submode."
+  (let ((level-index 0)
+	(timestamp-pattern (assq 'java-pattern timestamp-option))
+        (timestamp-locale  (cdr (assq 'locale timestamp-option))))
+    (message "matched submode %s" name)
+    (setq logview--submode-name           name
+	  logview--submode-definition     definition
+	  logview--submode-type           submode-type
+          logview--process-buffer-changes t
+          logview--entry-regexp           entry-regexp
+          logview--submode-features       features
+          logview--submode-level-data     nil)
+   (logview--update-mode-name)
+   (when (memq 'level features)
+     (dolist (final-level logview--final-levels)
+       (dolist (level (cdr (assoc final-level levels)))
+         (push (cons level (cons level-index (cons (intern (format "logview-%s-entry" (symbol-name final-level)))
+                                                   (intern (format "logview-level-%s" (symbol-name final-level))))))
+               logview--submode-level-data)
+         (setq level-index (1+ level-index)))))
+   (setq logview--submode-level-faces (make-vector level-index nil))
+   (dolist (level-data logview--submode-level-data)
+     (aset logview--submode-level-faces (cadr level-data) (cddr level-data)))
+   (when (memq 'timestamp features)
+     (let ((num-fractionals (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern) logview--datetime-parsing-options)))
+       (setq logview--timestamp-option timestamp-option
+	     logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
+                                                                :locale timestamp-locale :timezone 'system
+                                                                logview--datetime-parsing-options)
+             logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
+             logview--timestamp-gap-format-string        (format "%%.%df" num-fractionals))))
+   (read-only-mode 1)
+   (when buffer-file-name
+     (pcase logview-auto-revert-mode
+       (`auto-revert-mode      (auto-revert-mode      1))
+       (`auto-revert-tail-mode (auto-revert-tail-mode 1))))
+   (logview--refilter)))
 
 (defun logview--all-timestamp-formats ()
   (unless logview--all-timestamp-formats-cache
@@ -3033,6 +3077,38 @@ returns non-nil."
                                                         (timestamp-formats       . ,logview--all-timestamp-formats-cache))
                                :overwrite t))))))
   logview--all-timestamp-formats-cache)
+
+(defun logview--timestamp-regexp (timestamp-option)
+    (let ((timestamp-pattern (assq 'java-pattern timestamp-option))
+          (timestamp-locale  (cdr (assq 'locale timestamp-option))))
+      (if timestamp-pattern
+          (condition-case error
+              (apply #'datetime-matching-regexp 'java (cdr timestamp-pattern)
+                     :locale timestamp-locale
+                     (append (cdr (assq 'datetime-options timestamp-option)) logview--datetime-matching-options))
+            ;; 'datetime' doesn't mention the erroneous pattern to keep
+            ;; the error message concise.  Let's do it ourselves.
+            (error (warn "In Java timestamp pattern '%s': %s"
+                         (cdr timestamp-pattern) (error-message-string error))
+                   nil))
+        (cdr (assq 'regexp timestamp-option)))))
+
+(defun logview--get-alist-path (path alist)
+  (let ((val alist))
+    (dolist (field path)
+      (when (json-alist-p val)
+	(setq val (alist-get field val))))
+    val))
+
+(defun logview--timestamp-options (definition standard-timestamps test-line)
+  "Return the timestamps from the definition, or the default timestamps."
+  (let ((timestamp-names (when test-line (cdr (assq 'timestamp definition)))))
+    (if timestamp-names
+        (mapcar (lambda (name)
+                  (logview--get-split-alists name "timestamp format"
+                                             logview-additional-timestamp-formats logview-std-timestamp-formats))
+                timestamp-names)
+      standard-timestamps)))
 
 ;; Schedule submode reguessing in all Logview buffers that have no submode.  There is some
 ;; black magic involved to do it one buffer a time and only when Emacs is idle (to avoid
