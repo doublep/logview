@@ -635,6 +635,10 @@ settings) with this face.")
 (defconst logview--thread-group    4)
 (defconst logview--ignored-group   5)
 (defconst logview--message-group   6)
+(defconst logview--groups '(timestamp level name thread ignored message))
+
+(defsubst logview--group (group)
+  (1+ (cl-position group logview--groups)))
 
 (defconst logview--final-levels '(error warning information debug trace)
   "List of final (submode-independent) levels, most to least severe.")
@@ -967,10 +971,19 @@ two functions (available since the first call) further."
 ;; - 11:  entry level as a number;
 ;; - 12:  entry timestamp as a float (or nil, if not parsed yet).
 ;;
+;; If the current submode is a JSON submode, elements 1-9 are all 0 or nil and the
+;; following are present:
+;; - 13   object parsed by `json-parse-string', or nil if not parsed yet,
+;;        or `err' if parsing failed
+;; - 14-17 group 1-4 (timestamp, level, name, thread) values
+;;
 ;; Offsets are relative to the entry beginning.  We store offsets so that values remain
 ;; valid even if buffer text is shifted forwards or backwards.
 ;;
 ;; For all the following functions, ENTRY must be a value of `logview-entry' property.
+(defsubst logview--make-entry ()
+  (make-vector 18 nil))
+
 (defsubst logview--entry-end (entry start)
   (+ start (aref entry 0)))
 
@@ -1002,6 +1015,9 @@ two functions (available since the first call) further."
 (defsubst logview--entry-timestamp (entry start)
   (or (aref entry 12)
       (aset entry 12 (funcall logview--submode-timestamp-parser (logview--entry-group entry start logview--timestamp-group)))))
+
+(defsubst logview--entry-parsed-value (entry)
+  (aref entry 13))
 
 
 ;; The following (inlined) functions are needed when applying
@@ -2948,7 +2964,7 @@ returns non-nil."
             (let ((regexp      (apply #'concat parts))
                   (level-index 0))
               (when (or (null test-line) (string-match-p regexp test-line))
-		(logview--submode-success name definition 'text regexp features timestamp-option)
+		(logview--submode-success name definition 'text regexp features levels timestamp-option)
 		(throw 'success nil))))))
       ;; "Promising" line.
       t)))
@@ -2958,7 +2974,7 @@ returns non-nil."
   (let ((paths (cdr (assq 'paths definition)))
 	(parsed (condition-case error
 		    (json-parse-string test-line :object-type 'alist)
-		  (json-parse-error nil)))
+		  (error nil)))
 	features levels have-explicit-message timestamp)
     (dolist (path paths)
       (let ((feature (car path))
@@ -2977,11 +2993,11 @@ returns non-nil."
                                    (when (or (null test-line) (string-match-p regexp timestamp))
 				     (throw 'timestamp-format-found option)))))))
 	(when timestamp-option
-	  (logview--submode-success name definition 'json nil features timestamp-option)
+	  (logview--submode-success name definition 'json nil features levels timestamp-option)
 	  (throw 'success nil)))))
   nil)
 
-(defun logview--submode-success (name definition submode-type entry-regexp features timestamp-option)
+(defun logview--submode-success (name definition submode-type entry-regexp features levels timestamp-option)
   "Set up logview-mode's buffer-local variables for a submode."
   (let ((level-index 0)
 	(timestamp-pattern (assq 'java-pattern timestamp-option))
@@ -3097,7 +3113,7 @@ returns non-nil."
   (let ((val alist))
     (dolist (field path)
       (when (json-alist-p val)
-	(setq val (alist-get field val))))
+	(setq val (cdr (assq field val)))))
     val))
 
 (defun logview--timestamp-options (definition standard-timestamps test-line)
@@ -3594,37 +3610,67 @@ next line, which is usually one line beyond END."
               (buffer-invisibility-spec nil))
           (goto-char region-start)
           (forward-line 0)
-          (when (or (looking-at logview--entry-regexp)
-                    (re-search-backward logview--entry-regexp nil t)
-                    (re-search-forward  logview--entry-regexp nil t))
-            (setq region-end (min region-end (1+ (buffer-size))))
-            (let* ((match-data  (match-data t))
-                   ;; The following depends on exact submode format, i.e. on how many
-                   ;; groups there are in `logview--entry-regexp'.
-                   (num-points  (- (length match-data) 2))
-                   (entry-start (car match-data))
-                   (have-level  (memq 'level logview--submode-features)))
-              (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
-                          (let* ((details-start   (progn (forward-line 1) (point)))
-                                 (have-next-entry (re-search-forward logview--entry-regexp nil t))
-                                 (entry-end       (if have-next-entry (match-beginning 0) (point-max)))
-                                 ;; See description of `logview-entry' above.
-                                 (logview-entry   (make-vector 13 nil)))
-                            (aset logview-entry 0 (- entry-end entry-start))
-                            (let ((points (cdr match-data)))
-                              (dotimes (k num-points)
-                                (let ((point (pop points)))
-                                  (aset logview-entry (1+ k) (when point (- point entry-start))))))
-                            (when (< details-start entry-end)
-                              (aset logview-entry 10 (- details-start entry-start)))
-                            (when have-level
-                              (aset logview-entry 11 (cadr (assoc (logview--entry-group logview-entry entry-start logview--level-group)
-                                                                  logview--submode-level-data))))
-                            (match-data t match-data)
-                            (put-text-property entry-start entry-end 'logview-entry logview-entry)
-                            (setq entry-start entry-end)
-                            (< entry-start region-end)))))))))))
+	  (setq region-end (min region-end (1+ (buffer-size))))
+	  (if (eq 'text logview--submode-type)
+              (logview--text-mode-find-region-entries region-end dont-stop-early)
+	    (logview--json-mode-find-region-entries region-end dont-stop-early)))))))
 
+(defun logview--text-mode-find-region-entries (region-end &optional dont-stop-early)
+  (when (or (looking-at logview--entry-regexp)
+            (re-search-backward logview--entry-regexp nil t)
+            (re-search-forward  logview--entry-regexp nil t))
+    (let* ((match-data  (match-data t))
+           ;; The following depends on exact submode format, i.e. on how many
+           ;; groups there are in `logview--entry-regexp'.
+           (num-points  (- (length match-data) 2))
+           (entry-start (car match-data))
+           (have-level  (memq 'level logview--submode-features)))
+      (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
+                  (let* ((details-start   (progn (forward-line 1) (point)))
+                         (have-next-entry (re-search-forward logview--entry-regexp nil t))
+                         (entry-end       (if have-next-entry (match-beginning 0) (point-max)))
+                         ;; See description of `logview-entry' above.
+                         (logview-entry   (logview--make-entry)))
+                    (aset logview-entry 0 (- entry-end entry-start))
+		    (aset logview-entry 1 0)
+                    (let ((points (cdr match-data)))
+                      (dotimes (k num-points)
+                        (let ((point (pop points)))
+                          (aset logview-entry (1+ k) (when point (- point entry-start))))))
+                    (when (< details-start entry-end)
+                      (aset logview-entry 10 (- details-start entry-start)))
+                    (when have-level
+                      (aset logview-entry 11 (cadr (assoc (logview--entry-group logview-entry entry-start logview--level-group)
+                                                          logview--submode-level-data))))
+                    (match-data t match-data)
+                    (put-text-property entry-start entry-end 'logview-entry logview-entry)
+                    (setq entry-start entry-end)
+                    (< entry-start region-end)))))))
+
+(defun logview--json-mode-find-region-entries (region-end &optional dont-stop-early)
+  (let ((entry-start (progn (forward-line 0) (point))))
+    (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
+		(let* ((parsed (condition-case error
+				   (json-parse-buffer :object-type 'alist)
+				 (error nil)))
+		       (entry-end (progn (when (or (null parsed) (eolp))
+					   (forward-line 1))
+					 (point)))
+                       ;; See description of `logview-entry' above.
+                       (logview-entry (logview--make-entry)))
+                  (aset logview-entry 0 (- entry-end entry-start))
+		  (aset logview-entry 1 0) ;; start of the "message" is start of the line
+		  (dolist (group logview--groups)
+		    (aset logview-entry (logview--group group) 0)
+		    (aset logview-entry (1+ (logview--group group)) 0))
+		  (when (memq 'level logview--submode-features)
+		    (let* ((level-path (logview--get-alist-path '(paths level) logview--submode-definition))
+			   (level-value (logview--get-alist-path level-path parsed)))
+		      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
+		  (aset logview-entry 13 parsed)
+                  (put-text-property entry-start entry-end 'logview-entry logview-entry)
+                  (setq entry-start entry-end)
+                  (< entry-start region-end))))))
 
 (defun logview--iterate-split-alists (callback &rest alists)
   (let ((seen (make-hash-table :test 'equal)))
@@ -3840,10 +3886,11 @@ This list is preserved across Emacs session in
           (save-match-data
             (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
               (when region-start
-                (let* ((have-timestamp              (memq 'timestamp logview--submode-features))
-                       (have-level                  (memq 'level     logview--submode-features))
-                       (have-name                   (memq 'name      logview--submode-features))
-                       (have-thread                 (memq 'thread    logview--submode-features))
+                (let* ((text-submode                (not (eq 'json logview--submode-type)))
+		       (have-timestamp              (and text-submode (memq 'timestamp logview--submode-features)))
+                       (have-name                   (and text-submode (memq 'name      logview--submode-features)))
+                       (have-thread                 (and text-submode (memq 'thread    logview--submode-features)))
+                       (have-level                  (memq 'level logview--submode-features))
                        (validator                   (cdr logview--effective-filter))
                        (difference-base             logview--timestamp-difference-base)
                        (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
