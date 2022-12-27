@@ -1,0 +1,5 @@
+{"timestamp":"2022-12-14T04:35:54.115","level":"ERROR","thread":"main-1","logger":"main","message":"Error message"}
+{"timestamp":"2022-12-14T04:36:54.115","level":"WARN","thread":"main-1","logger":"main","message":"Warning message"}
+{"timestamp":"2022-12-14T04:36:55.115","level":"INFO","thread":"main-1","logger":"main","message":"Info message"}
+{"timestamp":"2022-12-14T04:36:55.116","level":"DEBUG","thread":"main-1","logger":"main","message":"Debug message"}
+{"timestamp":"2022-12-14T04:37:57.115","level":"TRACE","thread":"main-1","logger":"main","message":"Trace message"}
