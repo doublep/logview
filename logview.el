@@ -975,14 +975,14 @@ two functions (available since the first call) further."
 ;; following are present:
 ;; - 13   object parsed by `json-parse-string', or nil if not parsed yet,
 ;;        or `err' if parsing failed
-;; - 14-17 group 1-4 (timestamp, level, name, thread) values
+;; - 14-17 group 1-4 (timestamp, level, name, thread) values (json modes)
 ;;
 ;; Offsets are relative to the entry beginning.  We store offsets so that values remain
 ;; valid even if buffer text is shifted forwards or backwards.
 ;;
 ;; For all the following functions, ENTRY must be a value of `logview-entry' property.
 (defsubst logview--make-entry ()
-  (make-vector 18 nil))
+  (make-vector 20 nil))
 
 (defsubst logview--entry-end (entry start)
   (+ start (aref entry 0)))
@@ -1000,8 +1000,10 @@ two functions (available since the first call) further."
   (+ start (aref entry (1+ (* group 2)))))
 
 (defsubst logview--entry-group (entry start group)
-  (let ((base (* group 2)))
-    (buffer-substring-no-properties (+ start (aref entry base)) (+ start (aref entry (1+ base))))))
+  (if (eq 'text logview--submode-type)
+      (let ((base (* group 2)))
+	(buffer-substring-no-properties (+ start (aref entry base)) (+ start (aref entry (1+ base)))))
+    (aref entry (+ 13 group))))
 
 (defsubst logview--entry-details-start (entry start)
   (let ((details-offset (aref entry 10)))
@@ -3660,15 +3662,20 @@ next line, which is usually one line beyond END."
                        (logview-entry (logview--make-entry)))
                   (aset logview-entry 0 (- entry-end entry-start))
 		  (aset logview-entry 1 0) ;; start of the "message" is start of the line
-		  (dolist (group logview--groups)
-		    (aset logview-entry (logview--group group) 0)
-		    (aset logview-entry (1+ (logview--group group)) 0))
-		  (when (memq 'level logview--submode-features)
-		    (let* ((level-path (logview--get-alist-path '(paths level) logview--submode-definition))
-			   (level-value (logview--get-alist-path level-path parsed)))
-		      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
 		  (aset logview-entry 13 parsed)
-                  (put-text-property entry-start entry-end 'logview-entry logview-entry)
+		  (dolist (group logview--groups)
+		    (let* ((group-index (logview--group group))
+			   (group-base (* group-index 2))
+			   (group-path (logview--get-alist-path `(paths ,group) logview--submode-definition)))
+		      (when (memq group '(timestamp level name thread))
+			(aset logview-entry group-base 0)
+			(aset logview-entry (1+ group-base) 0))
+		      (when group-path
+			(aset logview-entry (+ 13 group-index) (logview--get-alist-path group-path parsed)))))
+		  (when (memq 'level logview--submode-features)
+		    (let* ((level-value (aref logview-entry (+ 13 logview--level-group))))
+		      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
+		  (put-text-property entry-start entry-end 'logview-entry logview-entry)
                   (setq entry-start entry-end)
                   (< entry-start region-end))))))
 
