@@ -94,7 +94,8 @@ This value is used as the fallback for customizable
 			   (level     . (level))
 			   (name      . (logger))
 			   (message   . (message))))
-		 (levels . "SLF4J"))))))
+		 (levels . "SLF4J")))))
+  "Alist of JSON submodes.")
 
 (defvar logview-std-level-mappings
   '(("SLF4J"    . ((error       "ERROR")
@@ -882,7 +883,8 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-json-show-level       logview-json-hide-level                  "Show / hide the level at the start of each line")
      (logview-json-show-thread      logview-json-hide-thread                 "Show / hide the thread at the start of each line")
      (logview-json-show-message     logview-json-hide-message                "Show / hide the message at the start of each line")
-     (logview-show-pretty-printed-json                                       "Pretty print the current line"))
+     (logview-show-pretty-printed-json                                       "Pretty print the current line")
+     (logview-show-parsed-json                                               "Show the Lisp object parsed from the current line"))
     ("Miscellaneous"
      (logview-pulse-current-entry                                            "Briefly highlight the current entry")
      (logview-choose-submode                                                 "Manually choose appropriate submode")
@@ -1191,6 +1193,7 @@ that the line is not the first in the buffer."
 		       ("j m" logview-json-show-message)
 		       ("j M" logview-json-hide-message)
 		       ("j j" logview-show-pretty-printed-json)
+		       ("j e" logview-show-parsed-json)
 		       ;; For compatibility with the inactive keymap.
                        ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
@@ -2850,13 +2853,27 @@ returns non-nil."
     (with-current-buffer-window (get-buffer-create "*Logview JSON*") nil nil
 	(let ((inhibit-read-only t))
 	  (insert json)
-	  (json-pretty-print-buffer))
-        (json-mode)
-      (let ((map (make-sparse-keymap)))
-	(set-keymap-parent map help-mode-map)
-	(substitute-key-definition 'revert-buffer 'undefined map help-mode-map)
-	(use-local-map map)))))
+	  (json-mode)
+	  (json-pretty-print-buffer)))))
 
+(defun logview-show-parsed-json ()
+  "Show the current log line parsed into a Lisp object in a separate buffer."
+  (interactive)
+  (unless (eq 'json logview--submode-type)
+    (user-error "Not a JSON log"))
+  (let ((parsed (copy-tree (logview--locate-current-entry entry start
+			     (logview--entry-parsed-value entry)))))
+    ;; Font-locking adds properties to the strings in the parsed structure.
+    ;; Duplicate the strings and remove the properties.
+    (dolist (path (cdr (assq 'paths logview--submode-definition)))
+      (when (memq (car path) logview--submode-features)
+	(let ((elem (logview--assq-path (cdr path) parsed)))
+	  (setcdr elem (substring-no-properties (cdr elem))))))
+    (with-current-buffer-window (get-buffer-create "*Logview parsed JSON*") nil nil
+	(let ((inhibit-read-only t))
+	  (print parsed)
+	  (emacs-lisp-mode)
+	  (pp-buffer)))))
 
 
 ;;; Internal functions (except helpers for specific command groups).
@@ -3020,7 +3037,7 @@ returns non-nil."
 	features levels have-explicit-message timestamp)
     (dolist (path paths)
       (let ((feature (car path))
-	    (value (logview--get-alist-path (cdr path) parsed)))
+	    (value (cdr (logview--assq-path (cdr path) parsed))))
 	(when (or (null test-line) value)
 	  (push feature features)
 	  (cl-case feature
@@ -3151,12 +3168,14 @@ returns non-nil."
                    nil))
         (cdr (assq 'regexp timestamp-option)))))
 
-(defun logview--get-alist-path (path alist)
-  (let ((val alist))
+(defun logview--assq-path (path alist)
+  (let ((val alist)
+	result)
     (dolist (field path)
       (when (json-alist-p val)
-	(setq val (cdr (assq field val)))))
-    val))
+	(setq result (assq field val))
+	(setq val (cdr result))))
+    result))
 
 (defun logview--timestamp-options (definition standard-timestamps test-line)
   "Return the timestamps from the definition, or the default timestamps."
@@ -3706,12 +3725,12 @@ next line, which is usually one line beyond END."
 		  (dolist (group logview--groups)
 		    (let* ((group-index (logview--group group))
 			   (group-base (* group-index 2))
-			   (group-path (logview--get-alist-path `(paths ,group) logview--submode-definition)))
+			   (group-path (cdr (logview--assq-path `(paths ,group) logview--submode-definition))))
 		      (when (memq group '(timestamp level name thread))
 			(aset logview-entry group-base 0)
 			(aset logview-entry (1+ group-base) 0))
 		      (when group-path
-			(aset logview-entry (+ 13 group-index) (logview--get-alist-path group-path parsed)))))
+			(aset logview-entry (+ 13 group-index) (cdr (logview--assq-path group-path parsed))))))
 		  (when (memq 'level logview--submode-features)
 		    (let* ((level-value (aref logview-entry (+ 13 logview--level-group))))
 		      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
