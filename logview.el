@@ -3855,25 +3855,12 @@ This list is preserved across Emacs session in
                #'completing-read))
          arguments))
 
-(defun logview--level-face (entry)
-  (aref logview--submode-level-faces (logview--entry-level entry)))
-
-(defun logview--json-line-prefix-segment (entry group)
-  (let* ((val (format "%s" (logview--entry-group entry nil (logview--group group))))
-	 (chars (length val)))
-    (cl-case group
-      (timestamp (add-face-text-property 0 chars 'logview-timestamp                nil val))
-      (thread    (add-face-text-property 0 chars 'logview-thread                   nil val))
-      (name      (add-face-text-property 0 chars 'logview-name                     nil val))
-      (level     (add-face-text-property 0 chars (cdr (logview--level-face entry)) nil val)))
-    val))
-
-(defun logview--json-line-prefix (entry)
+(defun logview--json-line-prefix (entry start)
   (if (null logview--json-display-groups)
       ""
     (let ((prefix (concat
 		   (mapconcat (lambda (group)
-				(logview--json-line-prefix-segment entry group))
+				(logview--json-line-prefix-segment entry start group))
 			      (remove-if-not (lambda (group)
 					       (memq group logview--json-display-groups))
 					     '(timestamp level thread message))
@@ -3882,6 +3869,43 @@ This list is preserved across Emacs session in
       (when (memq 'level logview--submode-features)
         (add-face-text-property 0 (length prefix) (car (logview--level-face entry)) nil prefix))
       prefix)))
+
+(defun logview--json-line-prefix-segment (entry start group)
+  (let* ((str (format "%s" (or (and (eq 'timestamp group)
+				    (logview--timestamp-difference-string entry start))
+			       (logview--entry-group entry start (logview--group group)))))
+ (chars (length str)))
+    (cl-case group
+      (timestamp (add-face-text-property 0 chars 'logview-timestamp                nil str))
+      (thread    (add-face-text-property 0 chars 'logview-thread                   nil str))
+      (name      (add-face-text-property 0 chars 'logview-name                     nil str))
+      (level     (add-face-text-property 0 chars (cdr (logview--level-face entry)) nil str)))
+    str))
+
+(defun logview--level-face (entry)
+  (aref logview--submode-level-faces (logview--entry-level entry)))
+
+(defun logview--timestamp-difference-string (entry start)
+  (when (or logview--timestamp-difference-base
+	    logview--timestamp-difference-per-thread-bases)
+    (let ((difference-base (or (when logview--timestamp-difference-per-thread-bases
+                                 (gethash (logview--entry-group entry start logview--thread-group) logview--timestamp-difference-per-thread-bases))
+                               logview--timestamp-difference-base)))
+      (when (and difference-base (not (= (cdr difference-base) start)))
+        ;; FIXME: It is possible that fractionals are not the last
+        ;;        thing in the timestamp, in which case it would be
+        ;;        nicer to add some spaces on the right. However,
+        ;;        it's not easy to do and is also quite unlikely,
+        ;;        so ignoring that for now.
+        (let* ((difference        (- (logview--entry-timestamp entry start)
+                                     (logview--entry-timestamp (car difference-base) (cdr difference-base))))
+               (difference-string (format logview--timestamp-difference-format-string difference))
+               (length-delta      (- (length (logview--entry-group entry start logview--timestamp-group))
+				     (length difference-string))))
+          (when (> length-delta 0)
+            (setq difference-string (concat (make-string length-delta ? ) difference-string)))
+	  difference-string)))))
+
 
 
 ;;; Internal commands meant as hooks.
@@ -3946,10 +3970,6 @@ This list is preserved across Emacs session in
                        (have-thread                 (and text-submode (memq 'thread    logview--submode-features)))
                        (have-level                  (memq 'level logview--submode-features))
                        (validator                   (cdr logview--effective-filter))
-                       (difference-base             logview--timestamp-difference-base)
-                       (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
-                       (displaying-differences      (or difference-base difference-bases-per-thread))
-                       (difference-format-string    logview--timestamp-difference-format-string)
                        (header-filter               (cdr logview--section-header-filter))
                        (highlighter                 (cdr logview--highlighted-filter))
                        (highlighted-part            logview-highlighted-entry-part))
@@ -3969,28 +3989,10 @@ This list is preserved across Emacs session in
                                                            (cdr entry-faces)))))
                              (when have-timestamp
                                (let ((from (logview--entry-group-start entry start logview--timestamp-group))
-                                     (to   (logview--entry-group-end   entry start logview--timestamp-group))
-                                     timestamp-replaced)
+                                     (to   (logview--entry-group-end   entry start logview--timestamp-group)))
                                  (add-face-text-property from to 'logview-timestamp)
-                                 (when displaying-differences
-                                   (let ((difference-base (or (when difference-bases-per-thread
-                                                                (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
-                                                              difference-base)))
-                                     (when (and difference-base (not (= (cdr difference-base) start)))
-                                       ;; FIXME: It is possible that fractionals are not the last
-                                       ;;        thing in the timestamp, in which case it would be
-                                       ;;        nicer to add some spaces on the right. However,
-                                       ;;        it's not easy to do and is also quite unlikely,
-                                       ;;        so ignoring that for now.
-                                       (let* ((difference        (- (logview--entry-timestamp entry start)
-                                                                    (logview--entry-timestamp (car difference-base) (cdr difference-base))))
-                                              (difference-string (format difference-format-string difference))
-                                              (length-delta      (- to from (length difference-string))))
-                                         (when (> length-delta 0)
-                                           (setq difference-string (concat (make-string length-delta ? ) difference-string)))
-                                         (put-text-property from to 'display difference-string)
-                                         (setq timestamp-replaced t)))))
-                                 (unless timestamp-replaced
+                                 (if-let ((difference-string (logview--timestamp-difference-string entry start)))
+                                     (put-text-property from to 'display difference-string)
                                    (remove-list-of-text-properties from to '(display)))))
                              (when have-name
                                (add-face-text-property (logview--entry-group-start entry start logview--name-group)
@@ -4007,7 +4009,7 @@ This list is preserved across Emacs session in
                                                        (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
                                                        'logview-highlight))
 			     (unless text-submode
-                               (put-text-property start end 'line-prefix (logview--json-line-prefix entry))))
+                               (put-text-property start end 'line-prefix (logview--json-line-prefix entry start))))
                          (setq filtered t))
                        (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
                        ;; There appears to be a bug in displaying code for the case that
