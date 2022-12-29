@@ -54,6 +54,7 @@
                    (require 'help-mode))
 (require 'datetime)
 (require 'extmap)
+(require 'json)
 ;; For `string-trim' in earlier Emacs versions.
 (require 'subr-x)
 
@@ -880,7 +881,8 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-json-show-name        logview-json-hide-name                   "Show / hide the name at the start of each line")
      (logview-json-show-level       logview-json-hide-level                  "Show / hide the level at the start of each line")
      (logview-json-show-thread      logview-json-hide-thread                 "Show / hide the thread at the start of each line")
-     (logview-json-show-message     logview-json-hide-message                "Show / hide the message at the start of each line"))
+     (logview-json-show-message     logview-json-hide-message                "Show / hide the message at the start of each line")
+     (logview-show-pretty-printed-json                                       "Pretty print the current line"))
     ("Miscellaneous"
      (logview-pulse-current-entry                                            "Briefly highlight the current entry")
      (logview-choose-submode                                                 "Manually choose appropriate submode")
@@ -1188,6 +1190,7 @@ that the line is not the first in the buffer."
 		       ("j T" logview-json-hide-thread)
 		       ("j m" logview-json-show-message)
 		       ("j M" logview-json-hide-message)
+		       ("j j" logview-show-pretty-printed-json)
 		       ;; For compatibility with the inactive keymap.
                        ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
@@ -2836,6 +2839,23 @@ returns non-nil."
                 (message "Appended the tail of file %s" file)))
           (unless no-errors
             (user-error "Buffer contents doesn't match the head of %s anymore" file)))))))
+
+(defun logview-show-pretty-printed-json ()
+  "Show the current log line pretty-printed in a separate buffer."
+  (interactive)
+  (unless (eq 'json logview--submode-type)
+    (user-error "Not a JSON log"))
+  (let ((json (logview--locate-current-entry entry start
+		(buffer-substring-no-properties start (logview--entry-end entry start)))))
+    (with-current-buffer-window (get-buffer-create "*Logview JSON*") nil nil
+	(let ((inhibit-read-only t))
+	  (insert json)
+	  (json-pretty-print-buffer))
+        (json-mode)
+      (let ((map (make-sparse-keymap)))
+	(set-keymap-parent map help-mode-map)
+	(substitute-key-definition 'revert-buffer 'undefined map help-mode-map)
+	(use-local-map map)))))
 
 
 
