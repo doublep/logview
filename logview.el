@@ -778,6 +778,9 @@ settings) with this face.")
 (defconst logview--view-submode-regexp (rx bol (group "submode") (1+ " ") (group (1+ nonl))          eol))
 (defconst logview--view-index-regexp   (rx bol (group "index")   (1+ " ") (group (? "-") (1+ digit)) eol))
 
+;; List that may contain timestamp, name, level, thread, message
+(defvar logview--json-display-groups nil)
+
 
 (defvar logview--cheat-sheet
   '(("Movement"
@@ -872,6 +875,12 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-toggle-search-only-in-messages                                 "Toggle ‘search only in messages’")
      (logview-toggle-show-ellipses                                           "Toggle ‘show ellipses’")
      "Options can be customized globally or changed in each buffer.")
+    ("Change display of JSON logs"
+     (logview-json-show-timestamp   logview-json-hide-timestamp              "Show / hide the timestamp at the start of each line")
+     (logview-json-show-name        logview-json-hide-name                   "Show / hide the name at the start of each line")
+     (logview-json-show-level       logview-json-hide-level                  "Show / hide the level at the start of each line")
+     (logview-json-show-thread      logview-json-hide-thread                 "Show / hide the thread at the start of each line")
+     (logview-json-show-message     logview-json-hide-message                "Show / hide the message at the start of each line"))
     ("Miscellaneous"
      (logview-pulse-current-entry                                            "Briefly highlight the current entry")
      (logview-choose-submode                                                 "Manually choose appropriate submode")
@@ -1011,7 +1020,7 @@ two functions (available since the first call) further."
       (+ start details-offset))))
 
 (defsubst logview--entry-level (entry)
-  (aref entry 11))
+  (or (aref entry 11) 4))
 
 ;; Parse entry timestamp.  This value is cached.
 (defsubst logview--entry-timestamp (entry start)
@@ -1168,7 +1177,18 @@ that the line is not the first in the buffer."
                        ("o g" logview-change-target-gap-length)
                        ("o s" logview-choose-submode)
                        ("o S" logview-customize-submode-options)
-                       ;; For compatibility with the inactive keymap.
+		       ;; JSON commands.
+		       ("j s" logview-json-show-timestamp)
+		       ("j S" logview-json-hide-timestamp)
+		       ("j n" logview-json-show-name)
+		       ("j N" logview-json-hide-name)
+		       ("j l" logview-json-show-level)
+		       ("j L" logview-json-hide-level)
+		       ("j t" logview-json-show-thread)
+		       ("j T" logview-json-hide-thread)
+		       ("j m" logview-json-show-message)
+		       ("j M" logview-json-hide-message)
+		       ;; For compatibility with the inactive keymap.
                        ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
@@ -3835,6 +3855,33 @@ This list is preserved across Emacs session in
                #'completing-read))
          arguments))
 
+(defun logview--level-face (entry)
+  (aref logview--submode-level-faces (logview--entry-level entry)))
+
+(defun logview--json-line-prefix-segment (entry group)
+  (let* ((val (format "%s" (logview--entry-group entry nil (logview--group group))))
+	 (chars (length val)))
+    (cl-case group
+      (timestamp (add-face-text-property 0 chars 'logview-timestamp                nil val))
+      (thread    (add-face-text-property 0 chars 'logview-thread                   nil val))
+      (name      (add-face-text-property 0 chars 'logview-name                     nil val))
+      (level     (add-face-text-property 0 chars (cdr (logview--level-face entry)) nil val)))
+    val))
+
+(defun logview--json-line-prefix (entry)
+  (if (null logview--json-display-groups)
+      ""
+    (let ((prefix (concat
+		   (mapconcat (lambda (group)
+				(logview--json-line-prefix-segment entry group))
+			      (remove-if-not (lambda (group)
+					       (memq group logview--json-display-groups))
+					     '(timestamp level thread message))
+			      " ")
+		   " ")))
+      (when (memq 'level logview--submode-features)
+        (add-face-text-property 0 (length prefix) (car (logview--level-face entry)) nil prefix))
+      prefix)))
 
 
 ;;; Internal commands meant as hooks.
@@ -3914,11 +3961,12 @@ This list is preserved across Emacs session in
                        (if (or (null validator) (funcall validator entry start))
                            (progn
                              (when have-level
-                               (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
+                               (let ((entry-faces (logview--level-face entry)))
                                  (put-text-property start end 'face (car entry-faces))
-                                 (add-face-text-property (logview--entry-group-start entry start logview--level-group)
-                                                         (logview--entry-group-end   entry start logview--level-group)
-                                                         (cdr entry-faces))))
+				 (when text-submode
+                                   (add-face-text-property (logview--entry-group-start entry start logview--level-group)
+                                                           (logview--entry-group-end   entry start logview--level-group)
+                                                           (cdr entry-faces)))))
                              (when have-timestamp
                                (let ((from (logview--entry-group-start entry start logview--timestamp-group))
                                      (to   (logview--entry-group-end   entry start logview--timestamp-group))
@@ -3957,7 +4005,9 @@ This list is preserved across Emacs session in
                              (when (and highlighter (funcall highlighter entry start))
                                (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
                                                        (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
-                                                       'logview-highlight)))
+                                                       'logview-highlight))
+			     (unless text-submode
+                               (put-text-property start end 'line-prefix (logview--json-line-prefix entry))))
                          (setq filtered t))
                        (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
                        ;; There appears to be a bug in displaying code for the case that
@@ -4213,6 +4263,73 @@ This list is preserved across Emacs session in
     (`thread-narrowing-filters logview-filter-edit--thread-narrowing-filters-hint-comment)
     (`views                    logview-filter-edit--views-hint-comment)))
 
+;; JSON logs commands
+
+(defun logview-json-show-timestamp ()
+  "Show the timestamp in a JSON submode."
+  (interactive)
+  (logview--json-show-group 'timestamp))
+
+(defun logview-json-hide-timestamp ()
+  "Hide the timestamp in a JSON submode."
+  (interactive)
+  (logview--json-hide-group 'timestamp))
+
+(defun logview-json-show-name ()
+  "Show the name in a JSON submode."
+  (interactive)
+  (logview--json-show-group 'name))
+
+(defun logview-json-hide-name ()
+  "Hide the name in a JSON submode."
+  (interactive)
+  (logview--json-hide-group 'name))
+
+(defun logview-json-show-level ()
+  "Show the level in a JSON submode."
+  (interactive)
+  (logview--json-show-group 'level))
+
+(defun logview-json-hide-level ()
+  "Hide the level in a JSON submode."
+  (interactive)
+  (logview--json-hide-group 'level))
+
+(defun logview-json-show-thread ()
+  "Show the thread in a JSON submode."
+  (interactive)
+  (logview--json-show-group 'thread))
+
+(defun logview-json-hide-thread ()
+  "Hide the thread in a JSON submode."
+  (interactive)
+  (logview--json-hide-group 'thread))
+
+(defun logview-json-show-message ()
+  "Show the message in a JSON submode."
+  (interactive)
+  (logview--json-show-group 'message))
+
+(defun logview-json-hide-message ()
+  "Hide the message in a JSON submode."
+  (interactive)
+  (logview--json-hide-group 'message))
+
+(defun logview--json-show-group (group)
+  (unless (memq group logview--submode-features)
+    (user-error "Log lacks this feature"))
+  (let ((count (length logview--json-display-groups)))
+    (setq logview--json-display-groups (cl-adjoin group logview--json-display-groups))
+    (when (/= count (length logview--json-display-groups))
+      (logview--refontify-buffer))))
+
+(defun logview--json-hide-group (group)
+  (unless (memq group logview--submode-features)
+    (user-error "Log lacks this feature"))
+  (let ((count (length logview--json-display-groups)))
+    (setq logview--json-display-groups (cl-remove group logview--json-display-groups))
+    (when (/= count (length logview--json-display-groups))
+      (logview--refontify-buffer))))
 
 (add-hook 'kill-emacs-hook #'logview--kill-emacs-hook)
 (run-with-idle-timer 30 t #'logview--save-views-if-needed)
