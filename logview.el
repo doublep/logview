@@ -3068,6 +3068,7 @@ returns non-nil."
           logview--process-buffer-changes t
           logview--entry-regexp           entry-regexp
           logview--submode-features       features
+	  logview--json-display-groups    features
           logview--submode-level-data     nil)
    (logview--update-mode-name)
    (when (memq 'level features)
