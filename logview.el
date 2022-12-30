@@ -7,7 +7,7 @@
 ;; Version:    0.16.1snapshot
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "25.1") (datetime "0.6.1") (extmap "1.0"))
+;; Package-Requires: ((emacs "25.1") (datetime "0.6.1") (extmap "1.0") (json-mode "1.8.0"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -55,6 +55,7 @@
 (require 'datetime)
 (require 'extmap)
 (require 'json)
+(require 'json-mode)
 ;; For `string-trim' in earlier Emacs versions.
 (require 'subr-x)
 
@@ -2861,7 +2862,7 @@ returns non-nil."
   (interactive)
   (unless (eq 'json logview--submode-type)
     (user-error "Not a JSON log"))
-  (let ((parsed (copy-tree (logview--locate-current-entry entry start
+  (let ((parsed (copy-tree (logview--locate-current-entry entry _
 			     (logview--entry-parsed-value entry)))))
     ;; Font-locking adds properties to the strings in the parsed structure.
     ;; Duplicate the strings and remove the properties.
@@ -2920,7 +2921,8 @@ returns non-nil."
 
 (defun logview--initialize-submode (name definition standard-timestamps &optional test-line)
   "Try to match TEST-LINE to definition.
-   Return non-nil if TEST-LINE is 'promising', or throw 'success on a good match."
+   Return non-nil if TEST-LINE is 'promising', or throw 'success
+   on a good match."
   (let ((format (cdr (assq 'format definition))))
     (if (eq format 'json)
 	(logview--initialize-json-submode name definition standard-timestamps test-line)
@@ -3014,14 +3016,11 @@ returns non-nil."
         (setq cannot-match t)))
     (unless cannot-match
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
-        (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))
-               (timestamp-locale  (cdr (assq 'locale timestamp-option)))
-               (timestamp-regexp  (logview--timestamp-regexp timestamp-option)))
+        (let* ((timestamp-regexp (logview--timestamp-regexp timestamp-option)))
           (when (or timestamp-regexp (null timestamp-at))
             (when timestamp-at
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
-            (let ((regexp      (apply #'concat parts))
-                  (level-index 0))
+            (let ((regexp (apply #'concat parts)))
               (when (or (null test-line) (string-match-p regexp test-line))
 		(logview--submode-success name definition 'text regexp features levels timestamp-option)
 		(throw 'success nil))))))
@@ -3031,10 +3030,10 @@ returns non-nil."
 (defun logview--initialize-json-submode (name definition standard-timestamps &optional test-line)
   "Try to match TEST-LINE to a json definition."
   (let ((paths (cdr (assq 'paths definition)))
-	(parsed (condition-case error
+	(parsed (condition-case _
 		    (json-parse-string test-line :object-type 'alist)
 		  (error nil)))
-	features levels have-explicit-message timestamp)
+	features levels timestamp)
     (dolist (path paths)
       (let ((feature (car path))
 	    (value (cdr (logview--assq-path (cdr path) parsed))))
@@ -3712,7 +3711,7 @@ next line, which is usually one line beyond END."
 (defun logview--json-mode-find-region-entries (region-end &optional dont-stop-early)
   (let ((entry-start (progn (forward-line 0) (point))))
     (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
-		(let* ((parsed (condition-case error
+		(let* ((parsed (condition-case _
 				   (json-parse-buffer :object-type 'alist)
 				 (error nil)))
 		       (entry-end (progn (when (or (null parsed) (eolp))
@@ -3901,9 +3900,9 @@ This list is preserved across Emacs session in
     (let ((prefix (concat
 		   (mapconcat (lambda (group)
 				(logview--json-line-prefix-segment entry start group))
-			      (remove-if-not (lambda (group)
-					       (memq group logview--json-display-groups))
-					     '(timestamp level thread message))
+			      (cl-remove-if-not (lambda (group)
+						  (memq group logview--json-display-groups))
+						'(timestamp level thread message))
 			      " ")
 		   " ")))
       (when (memq 'level logview--submode-features)
