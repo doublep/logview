@@ -974,7 +974,7 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-json-show-level       logview-json-hide-level                  "Show / hide the level at the start of each line")
      (logview-json-show-thread      logview-json-hide-thread                 "Show / hide the thread at the start of each line")
      (logview-json-show-message     logview-json-hide-message                "Show / hide the message at the start of each line")
-     (logview-show-pretty-printed-json                                       "Pretty print the current line")
+     (logview-show-pretty-printed-json                                       "Show the current line's JSON")
      (logview-show-parsed-json                                               "Show the Lisp object parsed from the current line"))
     ("Miscellaneous"
      (logview-pulse-current-entry                                            "Briefly highlight the current entry")
@@ -1110,9 +1110,11 @@ two functions (available since the first call) further."
     (aref entry (+ 13 group))))
 
 (defsubst logview--entry-details-start (entry start)
-  (let ((details-offset (aref entry 10)))
-    (when details-offset
-      (+ start details-offset))))
+  (if (eq 'text logview--submode-type)
+      (let ((details-offset (aref entry 10)))
+        (when details-offset
+          (+ start details-offset)))
+    (+ 2 start)))
 
 (defsubst logview--entry-level (entry)
   (or (aref entry 11) 4))
@@ -3140,6 +3142,8 @@ returns non-nil."
                                      (throw 'timestamp-format-found option)))))))
         (when timestamp-option
           (logview--submode-success name definition 'json nil features levels timestamp-option)
+          (setq logview--hide-all-details t)
+          (logview--update-invisibility-spec)
           (throw 'success nil)))))
   nil)
 
