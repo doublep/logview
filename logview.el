@@ -93,7 +93,7 @@ This value is used as the fallback for customizable
                  (paths . ((timestamp . (timestamp))
                            (thread    . (thread))
                            (level     . (level))
-                           (name      . (logger))
+                           (name      . (name))
                            (message   . (message))))
                  (levels . "SLF4J")))))
   "Alist of JSON submodes.")
