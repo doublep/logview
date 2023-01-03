@@ -3029,9 +3029,7 @@ returns non-nil."
 (defun logview--initialize-json-submode (name definition standard-timestamps &optional test-line)
   "Try to match TEST-LINE to a json definition."
   (let ((paths (cdr (assq 'paths definition)))
-        (parsed (condition-case _
-                    (json-parse-string test-line :object-type 'alist)
-                  (error nil)))
+        (parsed (logview--json-parse-string test-line name definition))
         features levels timestamp)
     (dolist (path paths)
       (let ((feature (car path))
@@ -3710,9 +3708,7 @@ next line, which is usually one line beyond END."
 (defun logview--json-mode-find-region-entries (region-end &optional dont-stop-early)
   (let ((entry-start (progn (forward-line 0) (point))))
     (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
-                (let* ((parsed (condition-case _
-                                   (json-parse-buffer :object-type 'alist)
-                                 (error nil)))
+                (let* ((parsed (logview--json-parse-buffer))
                        (entry-end (progn (when (or (null parsed) (eolp))
                                            (forward-line 1))
                                          (point)))
@@ -3892,6 +3888,28 @@ This list is preserved across Emacs session in
                  #'ido-completing-read
                #'completing-read))
          arguments))
+
+(defun logview--json-parse-string (str &optional name definition)
+  (condition-case err
+      (logview--after-parse (json-parse-string str :object-type 'alist) name definition)
+    (error
+     (message "%s" (error-message-string err))
+     nil)))
+
+(defun logview--json-parse-buffer (&optional name definition)
+  (condition-case _
+      (logview--after-parse (json-parse-buffer :object-type 'alist) name definition)
+    (error nil)))
+
+(defun logview--after-parse (parsed &optional name definition)
+  (when parsed
+    (let ((after-parse-functions (cdr (assq 'after-parse-functions (or definition logview--submode-definition)))))
+      (dolist (fn after-parse-functions)
+        (condition-case err
+            (funcall fn parsed)
+          (error
+           (logview--internal-log "Logview: Error in after-parse-functions for submode %s: %s" (or name logview--submode-name) (error-message-string err)))))
+      parsed)))
 
 (defun logview--json-line-prefix (entry start)
   (if (null logview--json-display-groups)
