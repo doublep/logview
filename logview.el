@@ -95,7 +95,9 @@ This value is used as the fallback for customizable
                            (name      . (name))
                            (message   . (message))))
                  (levels . "SLF4J")))))
-  "Alist of JSON submodes.")
+  "Alist of standard JSON submodes.
+This value is used as the fallback for customizable
+`logview-additional-json-submodes'.")
 
 (defvar logview-std-level-mappings
   '(("SLF4J"    . ((error       "ERROR")
@@ -264,6 +266,95 @@ aliases  [optional]
     as the name."
   :group 'logview
   :type  logview--additional-submodes-type
+  :set   'logview--set-submode-affecting-variable
+  :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
+
+(defvar logview--additional-json-submodes-type
+  ;; TODO
+  (let* ((italicize      (lambda (string) (propertize string 'face 'italic)))
+         (mapping-option (lambda (mapping)
+                           (let ((name    (car mapping))
+                                 (aliases (cdr (assq 'aliases (cdr mapping)))))
+                             (list 'const
+                                   :tag (if aliases
+                                            (format "%s (aka: %s)" (funcall italicize name) (mapconcat italicize aliases ", "))
+                                          (funcall italicize name))
+                                   name)))))
+    (list 'repeat (list 'cons '(string :tag "Name")
+                        (list 'list :tag "Definition"
+                              '(cons :tag "" (const :tag "Format:" format) string)
+                              (list 'set :inline t
+                                    (list 'cons :tag "" '(const :tag "Level map:" levels)
+                                          (append '(choice)
+                                                  (mapcar mapping-option logview-std-level-mappings)
+                                                  '((string :tag "Other name"))))
+                                    (list 'cons :tag "" '(const :tag "Timestamp:" timestamp)
+                                          (list 'choice
+                                                '(const :tag "Any supported" nil)
+                                                (list 'repeat
+                                                      (append '(choice)
+                                                              (mapcar mapping-option logview-std-timestamp-formats)
+                                                              '((string :tag "Other name"))))))
+                                    '(cons :tag "" (const :tag "Aliases:"   aliases)   (repeat string))))))))
+
+(defcustom logview-additional-json-submodes nil
+  "Association list of JSON log submodes (file parsing rules).
+
+A few common submodes are already defined by the mode in variable
+`logview-std-json-submodes', but the ones you add here always
+take precedence.
+
+JSON submode definition has one required and several optional
+fields:
+
+paths
+
+    The only mandatory and the most important field that defines
+    how values are found in log entries.  There are five built-in
+    values: `timestamp', `thread', `level', `name', and
+    `message'.  For each value, supply a list of symbols which
+    will be used to navigate the parsed JSON object to find the
+    value. Supplying a path for each value is optional, but you
+    should supply at least one.
+
+
+widths  [optional]
+
+    An alist of column widths for displaying values from the log
+    entries.  Keys may be one of: `timestamp', `thread', `level',
+    `name', and `message'.  Values should be positive integers.
+
+after-parse-functions  [optional]
+
+    A list of functions to run on the object parsed from each
+    JSON line, which may modify it before log values are
+    extracted from it.  Note that these functions are run on
+    parsed objects during submode recognition, so they should
+    handle missing or unexpected fields in the parsed object.
+
+levels  [may be optional]
+
+    Level mapping (see `logview-additional-level-mappings') used
+    for this submode.  This field is optional only if the submode
+    lacks levels altogether.
+
+    There are some predefined values valid for this field:
+    \"SLF4J\" (and its aliases \"Log4j\", \"Log4j2\",
+    \"Logback\", \"JUL\" and the syslog standard \"RFC 5424\".
+    See variable `logview-std-level-mappings' for details.
+
+timestamp  [optional]
+
+    If set, must be a list of timestamp format names to try (see
+    `logview-additional-timestamp-formats').  If not set or
+    empty, all defined timestamp formats will be tried.
+
+aliases  [optional]
+
+    Submode can have any number of optional aliases, which work just
+    as the name."
+  :group 'logview
+  :type  logview--additional-json-submodes-type
   :set   'logview--set-submode-affecting-variable
   :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
 
@@ -2623,7 +2714,7 @@ minibuffer."
                        (logview--iterate-split-alists (lambda (name definition)
                                                         (push name submodes)
                                                         (setq submodes (append (cdr (assq 'aliases definition)) submodes)))
-                                                      logview-additional-submodes logview-std-submodes)
+                                                      logview-additional-submodes logview-additional-json-submodes logview-std-submodes logview-std-json-submodes)
                        (logview--completing-read "Submode name: " submodes nil t nil 'logview--submode-name-history))))
   (let ((submode-definition (logview--get-split-alists submode "submode" logview-additional-submodes logview-std-submodes))
         timestamp-definition)
@@ -2910,7 +3001,7 @@ returns non-nil."
                                                        (when (logview--initialize-submode name definition standard-timestamps line)
                                                          (setf promising t))
                                                      (error (warn (error-message-string error)))))
-                                                 logview-additional-submodes logview-std-submodes logview-std-json-submodes))
+                                                 logview-additional-submodes logview-additional-json-submodes logview-std-submodes logview-std-json-submodes))
                 (when promising
                   (setf remaining-attemps (1- remaining-attemps))))
               (forward-line 1)
