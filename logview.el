@@ -3909,10 +3909,19 @@ This list is preserved across Emacs session in
       prefix)))
 
 (defun logview--json-line-prefix-segment (entry start group)
-  (let* ((str (format "%s" (or (and (eq 'timestamp group)
-                                    (logview--timestamp-difference-string entry start))
-                               (logview--entry-group entry start (logview--group group)))))
- (chars (length str)))
+  (let* ((width (cdr (logview--assq-path `(widths ,group) logview--submode-definition)))
+         ;; could do this when submode is set up
+         (fmt (if width
+                  (format "%%-%is" width)
+                "%s"))
+         (val (format fmt (or (and (eq 'timestamp group)
+                                   (logview--timestamp-difference-string entry start))
+                              (logview--entry-group entry start (logview--group group)))))
+         (len (length val))
+         (str (if (and width (> len width))
+                  (substring val (- len width) len)
+                val))
+         (chars (length str)))
     (cl-case group
       (timestamp (add-face-text-property 0 chars 'logview-timestamp                nil str))
       (thread    (add-face-text-property 0 chars 'logview-thread                   nil str))
