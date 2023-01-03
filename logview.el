@@ -89,8 +89,7 @@ This value is used as the fallback for customizable
 
 (defvar logview-std-json-submodes
   (when (json-available-p)
-    '(("JSON" . ((format . json)
-                 (paths . ((timestamp . (timestamp))
+    '(("JSON" . ((paths . ((timestamp . (timestamp))
                            (thread    . (thread))
                            (level     . (level))
                            (name      . (name))
@@ -2924,7 +2923,7 @@ returns non-nil."
    Return non-nil if TEST-LINE is 'promising', or throw 'success
    on a good match."
   (let ((format (cdr (assq 'format definition))))
-    (if (eq format 'json)
+    (if (null format)
         (logview--initialize-json-submode name definition standard-timestamps test-line)
       (logview--initialize-text-submode name definition standard-timestamps test-line))))
 
