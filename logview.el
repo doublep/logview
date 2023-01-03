@@ -3901,7 +3901,7 @@ This list is preserved across Emacs session in
                                 (logview--json-line-prefix-segment entry start group))
                               (cl-remove-if-not (lambda (group)
                                                   (memq group logview--json-display-groups))
-                                                '(timestamp level thread message))
+                                                '(timestamp name level thread message))
                               " ")
                    " ")))
       (when (memq 'level logview--submode-features)
