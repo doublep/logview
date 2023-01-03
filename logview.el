@@ -90,12 +90,12 @@ This value is used as the fallback for customizable
 (defvar logview-std-json-submodes
   (when (json-available-p)
     '(("JSON" . ((format . json)
-		 (paths . ((timestamp . (timestamp))
-			   (thread    . (thread))
-			   (level     . (level))
-			   (name      . (logger))
-			   (message   . (message))))
-		 (levels . "SLF4J")))))
+                 (paths . ((timestamp . (timestamp))
+                           (thread    . (thread))
+                           (level     . (level))
+                           (name      . (logger))
+                           (message   . (message))))
+                 (levels . "SLF4J")))))
   "Alist of JSON submodes.")
 
 (defvar logview-std-level-mappings
@@ -1016,7 +1016,7 @@ two functions (available since the first call) further."
 (defsubst logview--entry-group (entry start group)
   (if (eq 'text logview--submode-type)
       (let ((base (* group 2)))
-	(buffer-substring-no-properties (+ start (aref entry base)) (+ start (aref entry (1+ base)))))
+        (buffer-substring-no-properties (+ start (aref entry base)) (+ start (aref entry (1+ base)))))
     (aref entry (+ 13 group))))
 
 (defsubst logview--entry-details-start (entry start)
@@ -1182,20 +1182,20 @@ that the line is not the first in the buffer."
                        ("o g" logview-change-target-gap-length)
                        ("o s" logview-choose-submode)
                        ("o S" logview-customize-submode-options)
-		       ;; JSON commands.
-		       ("j s" logview-json-show-timestamp)
-		       ("j S" logview-json-hide-timestamp)
-		       ("j n" logview-json-show-name)
-		       ("j N" logview-json-hide-name)
-		       ("j l" logview-json-show-level)
-		       ("j L" logview-json-hide-level)
-		       ("j t" logview-json-show-thread)
-		       ("j T" logview-json-hide-thread)
-		       ("j m" logview-json-show-message)
-		       ("j M" logview-json-hide-message)
-		       ("j j" logview-show-pretty-printed-json)
-		       ("j e" logview-show-parsed-json)
-		       ;; For compatibility with the inactive keymap.
+                       ;; JSON commands.
+                       ("j s" logview-json-show-timestamp)
+                       ("j S" logview-json-hide-timestamp)
+                       ("j n" logview-json-show-name)
+                       ("j N" logview-json-hide-name)
+                       ("j l" logview-json-show-level)
+                       ("j L" logview-json-hide-level)
+                       ("j t" logview-json-show-thread)
+                       ("j T" logview-json-hide-thread)
+                       ("j m" logview-json-show-message)
+                       ("j M" logview-json-hide-message)
+                       ("j j" logview-show-pretty-printed-json)
+                       ("j e" logview-show-parsed-json)
+                       ;; For compatibility with the inactive keymap.
                        ("C-c C-c" logview-choose-submode)
                        ("C-c C-s" logview-customize-submode-options)
                        ;; Miscellaneous commands.
@@ -2850,12 +2850,12 @@ returns non-nil."
   (unless (eq 'json logview--submode-type)
     (user-error "Not a JSON log"))
   (let ((json (logview--locate-current-entry entry start
-		(buffer-substring-no-properties start (logview--entry-end entry start)))))
+                (buffer-substring-no-properties start (logview--entry-end entry start)))))
     (with-current-buffer-window (get-buffer-create "*Logview JSON*") nil nil
-	(let ((inhibit-read-only t))
-	  (insert json)
-	  (json-mode)
-	  (json-pretty-print-buffer)))))
+        (let ((inhibit-read-only t))
+          (insert json)
+          (json-mode)
+          (json-pretty-print-buffer)))))
 
 (defun logview-show-parsed-json ()
   "Show the current log line parsed into a Lisp object in a separate buffer."
@@ -2863,18 +2863,18 @@ returns non-nil."
   (unless (eq 'json logview--submode-type)
     (user-error "Not a JSON log"))
   (let ((parsed (copy-tree (logview--locate-current-entry entry _
-			     (logview--entry-parsed-value entry)))))
+                             (logview--entry-parsed-value entry)))))
     ;; Font-locking adds properties to the strings in the parsed structure.
     ;; Duplicate the strings and remove the properties.
     (dolist (path (cdr (assq 'paths logview--submode-definition)))
       (when (memq (car path) logview--submode-features)
-	(let ((elem (logview--assq-path (cdr path) parsed)))
-	  (setcdr elem (substring-no-properties (cdr elem))))))
+        (let ((elem (logview--assq-path (cdr path) parsed)))
+          (setcdr elem (substring-no-properties (cdr elem))))))
     (with-current-buffer-window (get-buffer-create "*Logview parsed JSON*") nil nil
-	(let ((inhibit-read-only t))
-	  (print parsed)
-	  (emacs-lisp-mode)
-	  (pp-buffer)))))
+        (let ((inhibit-read-only t))
+          (print parsed)
+          (emacs-lisp-mode)
+          (pp-buffer)))))
 
 
 ;;; Internal functions (except helpers for specific command groups).
@@ -2925,7 +2925,7 @@ returns non-nil."
    on a good match."
   (let ((format (cdr (assq 'format definition))))
     (if (eq format 'json)
-	(logview--initialize-json-submode name definition standard-timestamps test-line)
+        (logview--initialize-json-submode name definition standard-timestamps test-line)
       (logview--initialize-text-submode name definition standard-timestamps test-line))))
 
 ;; Returns non-nil if TEST-LINE is "promising".
@@ -3022,52 +3022,52 @@ returns non-nil."
               (setcar timestamp-at (format "\\(?%d:%s\\)" logview--timestamp-group timestamp-regexp)))
             (let ((regexp (apply #'concat parts)))
               (when (or (null test-line) (string-match-p regexp test-line))
-		(logview--submode-success name definition 'text regexp features levels timestamp-option)
-		(throw 'success nil))))))
+                (logview--submode-success name definition 'text regexp features levels timestamp-option)
+                (throw 'success nil))))))
       ;; "Promising" line.
       t)))
 
 (defun logview--initialize-json-submode (name definition standard-timestamps &optional test-line)
   "Try to match TEST-LINE to a json definition."
   (let ((paths (cdr (assq 'paths definition)))
-	(parsed (condition-case _
-		    (json-parse-string test-line :object-type 'alist)
-		  (error nil)))
-	features levels timestamp)
+        (parsed (condition-case _
+                    (json-parse-string test-line :object-type 'alist)
+                  (error nil)))
+        features levels timestamp)
     (dolist (path paths)
       (let ((feature (car path))
-	    (value (cdr (logview--assq-path (cdr path) parsed))))
-	(when (or (null test-line) value)
-	  (push feature features)
-	  (cl-case feature
-	    (timestamp (setq timestamp value))
-	    (level (setq levels (logview--get-split-alists (cdr (assq 'levels definition)) "level mapping"
-							   logview-additional-level-mappings logview-std-level-mappings)))))))
+            (value (cdr (logview--assq-path (cdr path) parsed))))
+        (when (or (null test-line) value)
+          (push feature features)
+          (cl-case feature
+            (timestamp (setq timestamp value))
+            (level (setq levels (logview--get-split-alists (cdr (assq 'levels definition)) "level mapping"
+                                                           logview-additional-level-mappings logview-std-level-mappings)))))))
     (when (= (length paths) (length features))
       (let* ((timestamp-options (logview--timestamp-options definition standard-timestamps test-line))
-	     (timestamp-option (catch 'timestamp-format-found
-				 (dolist (option (when timestamp timestamp-options))
-				   (let ((regexp (logview--timestamp-regexp option)))
+             (timestamp-option (catch 'timestamp-format-found
+                                 (dolist (option (when timestamp timestamp-options))
+                                   (let ((regexp (logview--timestamp-regexp option)))
                                    (when (or (null test-line) (string-match-p regexp timestamp))
-				     (throw 'timestamp-format-found option)))))))
-	(when timestamp-option
-	  (logview--submode-success name definition 'json nil features levels timestamp-option)
-	  (throw 'success nil)))))
+                                     (throw 'timestamp-format-found option)))))))
+        (when timestamp-option
+          (logview--submode-success name definition 'json nil features levels timestamp-option)
+          (throw 'success nil)))))
   nil)
 
 (defun logview--submode-success (name definition submode-type entry-regexp features levels timestamp-option)
   "Set up logview-mode's buffer-local variables for a submode."
   (let ((level-index 0)
-	(timestamp-pattern (assq 'java-pattern timestamp-option))
+        (timestamp-pattern (assq 'java-pattern timestamp-option))
         (timestamp-locale  (cdr (assq 'locale timestamp-option))))
     (message "matched submode %s" name)
     (setq logview--submode-name           name
-	  logview--submode-definition     definition
-	  logview--submode-type           submode-type
+          logview--submode-definition     definition
+          logview--submode-type           submode-type
           logview--process-buffer-changes t
           logview--entry-regexp           entry-regexp
           logview--submode-features       features
-	  logview--json-display-groups    features
+          logview--json-display-groups    features
           logview--submode-level-data     nil)
    (logview--update-mode-name)
    (when (memq 'level features)
@@ -3083,7 +3083,7 @@ returns non-nil."
    (when (memq 'timestamp features)
      (let ((num-fractionals (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern) logview--datetime-parsing-options)))
        (setq logview--timestamp-option timestamp-option
-	     logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
+             logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
                                                                 :locale timestamp-locale :timezone 'system
                                                                 logview--datetime-parsing-options)
              logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
@@ -3170,11 +3170,11 @@ returns non-nil."
 
 (defun logview--assq-path (path alist)
   (let ((val alist)
-	result)
+        result)
     (dolist (field path)
       (when (json-alist-p val)
-	(setq result (assq field val))
-	(setq val (cdr result))))
+        (setq result (assq field val))
+        (setq val (cdr result))))
     result))
 
 (defun logview--timestamp-options (definition standard-timestamps test-line)
@@ -3671,10 +3671,10 @@ next line, which is usually one line beyond END."
               (buffer-invisibility-spec nil))
           (goto-char region-start)
           (forward-line 0)
-	  (setq region-end (min region-end (1+ (buffer-size))))
-	  (if (eq 'text logview--submode-type)
+          (setq region-end (min region-end (1+ (buffer-size))))
+          (if (eq 'text logview--submode-type)
               (logview--text-mode-find-region-entries region-end dont-stop-early)
-	    (logview--json-mode-find-region-entries region-end dont-stop-early)))))))
+            (logview--json-mode-find-region-entries region-end dont-stop-early)))))))
 
 (defun logview--text-mode-find-region-entries (region-end &optional dont-stop-early)
   (when (or (looking-at logview--entry-regexp)
@@ -3693,7 +3693,7 @@ next line, which is usually one line beyond END."
                          ;; See description of `logview-entry' above.
                          (logview-entry   (logview--make-entry)))
                     (aset logview-entry 0 (- entry-end entry-start))
-		    (aset logview-entry 1 0)
+                    (aset logview-entry 1 0)
                     (let ((points (cdr match-data)))
                       (dotimes (k num-points)
                         (let ((point (pop points)))
@@ -3711,30 +3711,30 @@ next line, which is usually one line beyond END."
 (defun logview--json-mode-find-region-entries (region-end &optional dont-stop-early)
   (let ((entry-start (progn (forward-line 0) (point))))
     (while (and (or dont-stop-early (null (get-text-property entry-start 'logview-entry)))
-		(let* ((parsed (condition-case _
-				   (json-parse-buffer :object-type 'alist)
-				 (error nil)))
-		       (entry-end (progn (when (or (null parsed) (eolp))
-					   (forward-line 1))
-					 (point)))
+                (let* ((parsed (condition-case _
+                                   (json-parse-buffer :object-type 'alist)
+                                 (error nil)))
+                       (entry-end (progn (when (or (null parsed) (eolp))
+                                           (forward-line 1))
+                                         (point)))
                        ;; See description of `logview-entry' above.
                        (logview-entry (logview--make-entry)))
                   (aset logview-entry 0 (- entry-end entry-start))
-		  (aset logview-entry 1 0) ;; start of the "message" is start of the line
-		  (aset logview-entry 13 parsed)
-		  (dolist (group logview--groups)
-		    (let* ((group-index (logview--group group))
-			   (group-base (* group-index 2))
-			   (group-path (cdr (logview--assq-path `(paths ,group) logview--submode-definition))))
-		      (when (memq group '(timestamp level name thread))
-			(aset logview-entry group-base 0)
-			(aset logview-entry (1+ group-base) 0))
-		      (when group-path
-			(aset logview-entry (+ 13 group-index) (cdr (logview--assq-path group-path parsed))))))
-		  (when (memq 'level logview--submode-features)
-		    (let* ((level-value (aref logview-entry (+ 13 logview--level-group))))
-		      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
-		  (put-text-property entry-start entry-end 'logview-entry logview-entry)
+                  (aset logview-entry 1 0) ;; start of the "message" is start of the line
+                  (aset logview-entry 13 parsed)
+                  (dolist (group logview--groups)
+                    (let* ((group-index (logview--group group))
+                           (group-base (* group-index 2))
+                           (group-path (cdr (logview--assq-path `(paths ,group) logview--submode-definition))))
+                      (when (memq group '(timestamp level name thread))
+                        (aset logview-entry group-base 0)
+                        (aset logview-entry (1+ group-base) 0))
+                      (when group-path
+                        (aset logview-entry (+ 13 group-index) (cdr (logview--assq-path group-path parsed))))))
+                  (when (memq 'level logview--submode-features)
+                    (let* ((level-value (aref logview-entry (+ 13 logview--level-group))))
+                      (aset logview-entry 11 (cadr (assoc level-value logview--submode-level-data)))))
+                  (put-text-property entry-start entry-end 'logview-entry logview-entry)
                   (setq entry-start entry-end)
                   (< entry-start region-end))))))
 
@@ -3898,21 +3898,21 @@ This list is preserved across Emacs session in
   (if (null logview--json-display-groups)
       ""
     (let ((prefix (concat
-		   (mapconcat (lambda (group)
-				(logview--json-line-prefix-segment entry start group))
-			      (cl-remove-if-not (lambda (group)
-						  (memq group logview--json-display-groups))
-						'(timestamp level thread message))
-			      " ")
-		   " ")))
+                   (mapconcat (lambda (group)
+                                (logview--json-line-prefix-segment entry start group))
+                              (cl-remove-if-not (lambda (group)
+                                                  (memq group logview--json-display-groups))
+                                                '(timestamp level thread message))
+                              " ")
+                   " ")))
       (when (memq 'level logview--submode-features)
         (add-face-text-property 0 (length prefix) (car (logview--level-face entry)) nil prefix))
       prefix)))
 
 (defun logview--json-line-prefix-segment (entry start group)
   (let* ((str (format "%s" (or (and (eq 'timestamp group)
-				    (logview--timestamp-difference-string entry start))
-			       (logview--entry-group entry start (logview--group group)))))
+                                    (logview--timestamp-difference-string entry start))
+                               (logview--entry-group entry start (logview--group group)))))
  (chars (length str)))
     (cl-case group
       (timestamp (add-face-text-property 0 chars 'logview-timestamp                nil str))
@@ -3926,7 +3926,7 @@ This list is preserved across Emacs session in
 
 (defun logview--timestamp-difference-string (entry start)
   (when (or logview--timestamp-difference-base
-	    logview--timestamp-difference-per-thread-bases)
+            logview--timestamp-difference-per-thread-bases)
     (let ((difference-base (or (when logview--timestamp-difference-per-thread-bases
                                  (gethash (logview--entry-group entry start logview--thread-group) logview--timestamp-difference-per-thread-bases))
                                logview--timestamp-difference-base)))
@@ -3940,10 +3940,10 @@ This list is preserved across Emacs session in
                                      (logview--entry-timestamp (car difference-base) (cdr difference-base))))
                (difference-string (format logview--timestamp-difference-format-string difference))
                (length-delta      (- (length (logview--entry-group entry start logview--timestamp-group))
-				     (length difference-string))))
+                                     (length difference-string))))
           (when (> length-delta 0)
             (setq difference-string (concat (make-string length-delta ? ) difference-string)))
-	  difference-string)))))
+          difference-string)))))
 
 
 
@@ -4004,7 +4004,7 @@ This list is preserved across Emacs session in
             (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
               (when region-start
                 (let* ((text-submode                (not (eq 'json logview--submode-type)))
-		       (have-timestamp              (and text-submode (memq 'timestamp logview--submode-features)))
+                       (have-timestamp              (and text-submode (memq 'timestamp logview--submode-features)))
                        (have-name                   (and text-submode (memq 'name      logview--submode-features)))
                        (have-thread                 (and text-submode (memq 'thread    logview--submode-features)))
                        (have-level                  (memq 'level logview--submode-features))
@@ -4022,7 +4022,7 @@ This list is preserved across Emacs session in
                              (when have-level
                                (let ((entry-faces (logview--level-face entry)))
                                  (put-text-property start end 'face (car entry-faces))
-				 (when text-submode
+                                 (when text-submode
                                    (add-face-text-property (logview--entry-group-start entry start logview--level-group)
                                                            (logview--entry-group-end   entry start logview--level-group)
                                                            (cdr entry-faces)))))
@@ -4047,7 +4047,7 @@ This list is preserved across Emacs session in
                                (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
                                                        (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
                                                        'logview-highlight))
-			     (unless text-submode
+                             (unless text-submode
                                (put-text-property start end 'line-prefix (logview--json-line-prefix entry start))))
                          (setq filtered t))
                        (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
