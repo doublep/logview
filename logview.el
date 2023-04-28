@@ -617,6 +617,7 @@ settings) with this face.")
 ;; Earlier Emacs 29 snapshots: need to set this variable to nil.
 (defvar long-line-threshold)
 (declare-function narrowing-unlock (tag))
+(declare-function internal--unlock-narrowing (tag))
 
 ;; Keep in sync with `logview--entry-*' and `logview--find-region-entries'.
 (defconst logview--timestamp-group 1)
@@ -892,14 +893,19 @@ macro `logview--std-temporarily-widening' instead."
 
 (defun logview--do-widen ()
   ;; {LOCKED-NARROWING}
-  (when (fboundp 'narrowing-unlock)
-    ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all tags
-    ;; I could find in Emacs source code.  Normally this should be enough, but there is
-    ;; obviously no guarantee with function `narrowing-lock' being part of public Lisp
-    ;; interface.
-    (narrowing-unlock 'fontification-functions)
-    (narrowing-unlock 'pre-command-hook)
-    (narrowing-unlock 'post-command-hook))
+  ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all tags I
+  ;; could find in Emacs source code.  Normally this should be enough, but there is
+  ;; obviously no guarantee with function `narrowing-lock' being part of public Lisp
+  ;; interface.
+  ;;
+  ;; Additionally, they had to rename everything in this retarded crap.
+  (cond ((fboundp 'internal--unlock-narrowing)
+         (internal--unlock-narrowing 'long-line-optimizations-in-fontification-functions)
+         (internal--unlock-narrowing 'long-line-optimizations-in-command-hooks))
+        ((fboundp 'narrowing-unlock)
+         (narrowing-unlock 'fontification-functions)
+         (narrowing-unlock 'pre-command-hook)
+         (narrowing-unlock 'post-command-hook)))
   (widen)
   ;; If still not widened, then it is better to fail hard now than to face an arbitrary
   ;; and hard to predict failure later.  In particular, an infinite loop in fontification
@@ -1174,7 +1180,7 @@ successfully.")
   ;; Logview is incompatible with locked narrowing of Emacs 29.  Later snapshots sort of
   ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set
   ;; this variable in hope this prevents it from ever happening.
-  (when (and (boundp 'long-line-threshold) (not (fboundp 'narrowing-unlock)))
+  (when (and (boundp 'long-line-threshold) (not (fboundp 'internal--unlock-narrowing)) (not (fboundp 'narrowing-unlock)))
     (setq-local long-line-threshold nil))
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
