@@ -498,3 +498,18 @@
       (should (memq 'logview-name              faces))
       (should (memq 'logview-information-entry faces))
       (should (memq 'bold                      faces)))))
+
+;; JSON submode
+
+(ert-deftest logview-test-json-match-all-levels ()
+  (logview--test-with-file "json/levels.log"
+    (should (equal logview--submode-name "JSON"))
+    (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 0))
+    (logview-next-entry)
+    (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 1))
+    (logview-next-entry)
+    (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 2))
+    (logview-next-entry)
+    (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 3))
+    (logview-next-entry)
+    (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 4))))
