@@ -3550,7 +3550,7 @@ next line, which is usually one line beyond END."
                             (when have-level
                               (aset logview-entry 11 (cadr (assoc (logview--entry-group logview-entry entry-start logview--level-group)
                                                                   logview--submode-level-data))))
-                            (match-data t match-data)
+                            (setf match-data (match-data t match-data))
                             (put-text-property entry-start entry-end 'logview-entry logview-entry)
                             (setq entry-start entry-end)
                             (< entry-start region-end)))))))))))
