@@ -142,6 +142,15 @@
     (logview-difference-to-current-entry)
     (logview-go-to-difference-base-entry)))
 
+;; Bug: Logview would ignore entry lines if they didn't contain a space at the end.  This
+;; would e.g. happen if you had code like 'log.info ("\n...");' in your program.
+(ert-deftest logview-test-multiline-entries ()
+  (logview--test-with-file "log4j/multiline-entries.log"
+    (should (equal logview--submode-name "SLF4J"))
+    ;; There are three entries in the file.
+    (logview-next-entry)
+    (logview-next-entry)
+    (should-error (logview-next-entry) :type 'user-error)))
 
 
 ;; RFC 5424 levels.

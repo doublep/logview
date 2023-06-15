@@ -1,0 +1,5 @@
+2023-15-06 00:00:00.000 [thread A] INFO foo.bar - message 1
+2023-15-06 00:00:00.000 [thread A] INFO foo.bar -
+message 2
+2023-15-06 00:00:00.000 [thread B] DEBUG xyz -
+message 3

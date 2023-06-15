@@ -2919,7 +2919,7 @@ returns non-nil."
       (funcall add-text-part search-from nil))
     ;; Unless `MESSAGE' field is used explicitly, behave as if format string ends with whitespace.
     (unless (or have-explicit-message (string-match-p "[ \t]$" format))
-      (push "[ \t]+" parts))
+      (push "\\(?:[ \t]+\\|$\\)" parts))
     (setq parts (nreverse parts))
     (when timestamp-at
       ;; Speed optimization: if the submode includes a timestamp, but
