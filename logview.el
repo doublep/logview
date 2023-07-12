@@ -616,8 +616,9 @@ settings) with this face.")
 ;; {LOCKED-NARROWING}
 ;; Earlier Emacs 29 snapshots: need to set this variable to nil.
 (defvar long-line-threshold)
-(declare-function narrowing-unlock (tag))
 (declare-function internal--unlock-narrowing (tag))
+(declare-function internal--unlabel-restriction (tag))
+(declare-function narrowing-unlock (tag))
 
 ;; Keep in sync with `logview--entry-*' and `logview--find-region-entries'.
 (defconst logview--timestamp-group 1)
@@ -898,8 +899,11 @@ macro `logview--std-temporarily-widening' instead."
   ;; obviously no guarantee with function `narrowing-lock' being part of public Lisp
   ;; interface.
   ;;
-  ;; Additionally, they had to rename everything in this retarded crap.
-  (cond ((fboundp 'internal--unlock-narrowing)
+  ;; Additionally, they had to rename everything in this retarded crap.  Twice so far.
+  (cond ((fboundp 'internal--unlabel-restriction)
+         (internal--unlabel-restriction 'long-line-optimizations-in-fontification-functions)
+         (internal--unlabel-restriction 'long-line-optimizations-in-command-hooks))
+        ((fboundp 'internal--unlock-narrowing)
          (internal--unlock-narrowing 'long-line-optimizations-in-fontification-functions)
          (internal--unlock-narrowing 'long-line-optimizations-in-command-hooks))
         ((fboundp 'narrowing-unlock)
@@ -1180,7 +1184,11 @@ successfully.")
   ;; Logview is incompatible with locked narrowing of Emacs 29.  Later snapshots sort of
   ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set
   ;; this variable in hope this prevents it from ever happening.
-  (when (and (boundp 'long-line-threshold) (not (fboundp 'internal--unlock-narrowing)) (not (fboundp 'narrowing-unlock)))
+  ;;
+  ;; See what `logview--do-widen' does with these functions.  I don't see a way to test
+  ;; that in an automated way, because internally Emacs activates this optimization only
+  ;; in displaying code, which is never used in such setup at all.
+  (when (and (boundp 'long-line-threshold) (not (fboundp 'internal--unlabel-restriction)) (not (fboundp 'internal--unlock-narrowing)) (not (fboundp 'narrowing-unlock)))
     (setq-local long-line-threshold nil))
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
