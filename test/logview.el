@@ -96,6 +96,12 @@
   (logview--test-with-file "log4j/fr-1.log"
     (should (equal logview--submode-name "SLF4J"))))
 
+(ert-deftest logview-test-log4j-national-timestamp-2 ()
+  ;; It's the same as above, but without comma in the timestamp.  See
+  ;; `logview--all-timestamp-formats'.
+  (logview--test-with-file "log4j/fr-2.log"
+    (should (equal logview--submode-name "SLF4J"))))
+
 ;; Issue #2.
 (ert-deftest logview-test-log4j-parens-in-thread-name ()
   (logview--test-with-file "log4j/parens-in-thread-name.log"

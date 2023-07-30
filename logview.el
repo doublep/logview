@@ -7,7 +7,7 @@
 ;; Version:    0.16.4snapshot
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "25.1") (datetime "0.6.1") (extmap "1.0"))
+;; Package-Requires: ((emacs "25.1") (datetime "0.8") (extmap "1.0"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -3020,9 +3020,23 @@ returns non-nil."
                         (dolist (pattern (cons time-pattern
                                                (mapcar (lambda (date-variant) (datetime-locale-date-time-pattern locale date-variant time-variant))
                                                        '(:short :medium :long :full))))
-                          (push pattern                                                                                   variants)
-                          (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSS")    pattern t) variants)
-                          (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSSSSS") pattern t) variants))
+                          (let ((subvariants (list pattern)))
+                            ;; Java 17 (used in `datetime' 0.8+) added commas in a lot of places.  We create
+                            ;; variants also without the commas, if only to match older logs.  There are also
+                            ;; other changes (e.g. separator "à" is gone in some patterns in French locale),
+                            ;; but those we can't handle transparently and generically, oh well.
+                            (when (string-match "\\(\\w\\), \\(\\w\\)" pattern)
+                              (let ((left  (intern (match-string 1 pattern)))
+                                    (right (intern (match-string 2 pattern))))
+                                (when (cond ((memq left  '(y d E c))
+                                             (memq right '(H h a)))    ; Between date and time.
+                                            ((memq left  '(s S))
+                                             (memq right '(y d E c)))) ; Between time and date.
+                                  (push (replace-match "\\1 \\2" t nil pattern) subvariants))))
+                            (dolist (pattern subvariants)
+                              (push pattern                                                                                   variants)
+                              (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSS")    pattern t) variants)
+                              (push (replace-regexp-in-string "\\<s+\\>" (concat "\\&" decimal-separator "SSSSSS") pattern t) variants))))
                         (dolist (pattern variants)
                           (let* ((parts            (datetime-recode-pattern 'java 'parsed pattern))
                                  (locale-dependent (datetime-pattern-locale-dependent-p 'parsed parts))
