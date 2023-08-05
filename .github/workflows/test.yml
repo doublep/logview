@@ -27,7 +27,7 @@ jobs:
         version: ${{matrix.emacs_version}}
 
     - name: Install Eldev
-      run: curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/github-eldev | sh
+      uses: emacs-eldev/setup-eldev@v1
 
     - name: Check out the source code
       uses: actions/checkout@v3
