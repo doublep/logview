@@ -748,15 +748,18 @@ settings) with this face.")
 
 (defvar logview-filter-edit--filters-hint-comment
   "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
+# Use C-c C-a to apply the changes without quitting the buffer.
 ")
 
 (defvar logview-filter-edit--thread-narrowing-filters-hint-comment
   "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
+# Use C-c C-a to apply the changes without quitting the buffer.
 # Only `t+' and `t-' filters are valid for thread narrowing.
 ")
 
 (defvar logview-filter-edit--views-hint-comment
   "# Press C-c C-c to save edited views, C-c C-k to quit without saving.
+# Use C-c C-a to apply the changes without quitting the buffer.
 ")
 
 (defconst logview--view-header-regexp  (rx bol (group "view")    (1+ " ") (group (1+ nonl))          eol))
@@ -3303,7 +3306,11 @@ See `logview--iterate-entries-forward' for details."
                         (if (plist-get view :index)
                             (format "Logview/%s [%s]:%d" logview--submode-name (plist-get view :name) (plist-get view :index))
                           (format "Logview/%s [%s]" logview--submode-name (plist-get view :name)))
-                      (format "Logview/%s" logview--submode-name)))))
+                      (format "Logview/%s" logview--submode-name)))
+    ;; Sometimes it doesn't work automatically (e.g. when using `C-c C-a' in a
+    ;; view-editing buffer and thus indirectly changing a different buffer's modeline).
+    ;; Just force update at all times, not trying to figure out when it works by itself.
+    (force-mode-line-update)))
 
 (defun logview--current-view ()
   (catch 'found
@@ -3966,6 +3973,7 @@ This list is preserved across Emacs session in
 (defvar logview-filter-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (dolist (binding '(("C-c C-c" logview-filter-edit-save)
+                       ("C-c C-a" logview-filter-edit-apply)
                        ("C-c C-k" logview-filter-edit-cancel)))
       (define-key map (kbd (car binding)) (cadr binding)))
     map))
@@ -3976,47 +3984,58 @@ This list is preserved across Emacs session in
   (add-hook 'after-change-functions 'logview-filter-edit--font-lock-region t t))
 
 (defun logview-filter-edit-save ()
+  "Save the edited filters or views and quit the buffer and window."
   (interactive)
-  (logview-filter-edit--quit t))
+  (logview-filter-edit--do t t))
+
+(defun logview-filter-edit-apply ()
+  "Apply the filters or views, but don't quit the buffer.
+In other words, buffer stays for futher editing.  Using `\\<logview-filter-edit-mode-map>\\[logview-filter-edit-cancel]'
+afterwards will only reset to the last applied state, not
+necessarily to the filters (views) how they were when the buffer
+got created."
+  (interactive)
+  (logview-filter-edit--do t nil))
 
 (defun logview-filter-edit-cancel ()
+  "Quit the buffer and its window, discarding all edits.
+If `\\<logview-filter-edit-mode-map>\\[logview-filter-edit-apply]' has been used from this buffer, its effects remain:
+only edits after it get discarded."
   (interactive)
-  (logview-filter-edit--quit nil))
+  (logview-filter-edit--do nil t))
 
-(defun logview-filter-edit--quit (save)
+(defun logview-filter-edit--do (save quit)
   (let* ((mode    logview-filter-edit--mode)
          (parent  logview-filter-edit--parent-buffer)
-         (windows logview-filter-edit--window-configuration)
-         (do-quit (lambda ()
-                    (kill-buffer)
-                    (switch-to-buffer parent)
-                    (set-window-configuration windows))))
-    (if (eq mode 'views)
-        (progn (when save
-                 (let ((new-views (save-excursion
-                                    (goto-char 1)
-                                    (logview--parse-view-definitions t))))
-                   (if logview-filter-edit--editing-views-for-submode
-                       (let ((combined-views (nreverse new-views)))
-                         (dolist (view (logview--views))
-                           (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
-                             (push view combined-views)))
-                         (setq logview--views (nreverse combined-views)))
-                     (setq logview--views             new-views
-                           logview--views-need-saving t))
-                   (logview--after-updating-view-definitions)))
-               (funcall do-quit)
-               ;; This takes effect only after quitting.
-               (logview--update-mode-name))
-      (let ((filters      (when save
-                            (buffer-substring-no-properties 1 (1+ (buffer-size)))))
-            (hint-comment (logview-filter-edit--hint-comment)))
-        (funcall do-quit)
-        (when save
-          (when (string-prefix-p hint-comment filters)
-            (setf filters (substring filters (length hint-comment))))
-          (setf (if (eq mode 'main-filters) logview--main-filter-text logview--thread-narrowing-filter-text) filters)
-          (logview--parse-filters))))))
+         (windows logview-filter-edit--window-configuration))
+    (when save
+      (if (eq mode 'views)
+          (let ((new-views (save-excursion
+                             (goto-char 1)
+                             (logview--parse-view-definitions t))))
+            (if logview-filter-edit--editing-views-for-submode
+                (let ((combined-views (nreverse new-views)))
+                  (dolist (view (logview--views))
+                    (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
+                      (push view combined-views)))
+                  (setq logview--views (nreverse combined-views)))
+              (setq logview--views             new-views
+                    logview--views-need-saving t))
+            (logview--after-updating-view-definitions)
+            (with-current-buffer parent
+              (logview--update-mode-name)))
+        (let ((filters      (when save
+                              (buffer-substring-no-properties 1 (1+ (buffer-size)))))
+              (hint-comment (logview-filter-edit--hint-comment)))
+            (when (string-prefix-p hint-comment filters)
+              (setf filters (substring filters (length hint-comment))))
+            (with-current-buffer parent
+              (setf (if (eq mode 'main-filters) logview--main-filter-text logview--thread-narrowing-filter-text) filters)
+              (logview--parse-filters)))))
+    (when quit
+      (kill-buffer)
+      (switch-to-buffer parent)
+      (set-window-configuration windows))))
 
 (defun logview-filter-edit--initialize-text (&optional filter-text)
   (erase-buffer)
