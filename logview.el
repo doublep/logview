@@ -1,6 +1,6 @@
 ;;; logview.el --- Major mode for viewing log files  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015-2022 Paul Pogonyshev
+;; Copyright (C) 2015-2023 Paul Pogonyshev
 
 ;; Author:     Paul Pogonyshev <pogonyshev@gmail.com>
 ;; Maintainer: Paul Pogonyshev <pogonyshev@gmail.com>
