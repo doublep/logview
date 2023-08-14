@@ -692,7 +692,14 @@ settings) with this face.")
 
 (defvar-local logview--main-filter-text             "")
 (defvar-local logview--thread-narrowing-filter-text "")
-(defvar-local logview--effective-filter             nil)
+
+(defvar-local logview--preview-filter-text nil
+  "Filters for which to show a preview.
+Take precedence over real filters.  When set, must be a cons cell
+of (IS-MAIN . FILTER-TEXT).")
+
+(defvar-local logview--effective-filter nil
+  "See `logview--do-parse-filters' for the format.")
 
 ;; I also considered using private cons cells where we could reset `car' e.g. from
 ;; `logview-filtered' to nil.  However, this is very shaky and will stop working if any
@@ -745,6 +752,7 @@ settings) with this face.")
 (defvar-local logview-filter-edit--editing-views-for-submode nil)
 (defvar-local logview-filter-edit--parent-buffer             nil)
 (defvar-local logview-filter-edit--window-configuration      nil)
+(defvar-local logview-filter-edit--preview-timer             nil)
 
 (defvar logview-filter-edit--filters-hint-comment
   "# Press C-c C-c to save edited filters, C-c C-k to quit without saving.
@@ -3351,18 +3359,33 @@ See `logview--iterate-entries-forward' for details."
 
 ;; Return non-nil if filters have changed.
 (defun logview--parse-filters (&optional to-reset)
-  (let ((filters (logview--do-parse-filters logview--main-filter-text logview--thread-narrowing-filter-text to-reset)))
-    (unless (prog1 (equal (cdar logview--effective-filter) (cdar filters))
-              (setf logview--effective-filter             filters
-                    logview--main-filter-text             (or (caar (car filters)) "")
-                    logview--thread-narrowing-filter-text (or (cdar (car filters)) "")))
-      (logview--refilter)
-      (logview--update-mode-name)
-      t)))
+  (let ((main-filters             logview--main-filter-text)
+        (thread-narrowing-filters logview--thread-narrowing-filter-text)
+        (preview-filters          logview--preview-filter-text))
+    (when preview-filters
+      (setf (if (car preview-filters) main-filters thread-narrowing-filters) (cdr preview-filters)))
+    (let ((filters (logview--do-parse-filters main-filters thread-narrowing-filters to-reset)))
+      (unless (prog1 (equal (cdar logview--effective-filter) (cdar filters))
+                (setf logview--effective-filter filters)
+                (unless (and preview-filters (car preview-filters))
+                  (setf logview--main-filter-text (or (caar (car filters)) "")))
+                (unless (and preview-filters (not (car preview-filters)))
+                  (setf logview--thread-narrowing-filter-text (or (cdar (car filters)) ""))))
+        (logview--refilter)
+        (logview--update-mode-name)
+        t))))
 
-;; Returns (((MAIN-FILTER-TEXT . THREAD-NARROWING-FILTER-TEXT) . KEY) . VALIDATOR-FN) or nil
-;; if there are no filters.
 (defun logview--do-parse-filters (filters &optional thread-narrowing-filters to-reset-in-main-filters)
+  "Parse given FILTERS and optional THREAD-NARROWING-FILTERS.
+TO-RESET-IN-MAIN-FILTERS may be a list of strings like \"a+\" of
+filter types to discard.
+
+Returns
+
+    (((MAIN-FILTER-TEXT . THREAD-NARROWING-FILTER-TEXT) . KEY)
+     . VALIDATOR-FN)
+
+or nil if there are no filters."
   (let (non-discarded-lines-main
         non-discarded-lines-narrowing
         min-shown-level
@@ -3981,7 +4004,10 @@ This list is preserved across Emacs session in
 (define-derived-mode logview-filter-edit-mode nil "Logview Filters"
   "Major mode for editing filters of a Logview buffer."
   (logview-filter-edit--font-lock-region (point-min) (point-max))
-  (add-hook 'after-change-functions 'logview-filter-edit--font-lock-region t t))
+  ;; FIXME: Use `font-lock-defaults' as in the main buffer.  Not very important, as filter
+  ;;        buffers are usually not large.
+  (add-hook 'after-change-functions #'logview-filter-edit--font-lock-region t t)
+  (add-hook 'after-change-functions #'logview-filter-edit--schedule-preview t t))
 
 (defun logview-filter-edit-save ()
   "Save the edited filters or views and quit the buffer and window."
@@ -4004,11 +4030,17 @@ only edits after it get discarded."
   (interactive)
   (logview-filter-edit--do nil t))
 
-(defun logview-filter-edit--do (save quit)
+(defun logview-filter-edit--do (process-filters quit)
   (let* ((mode    logview-filter-edit--mode)
          (parent  logview-filter-edit--parent-buffer)
-         (windows logview-filter-edit--window-configuration))
-    (when save
+         (windows logview-filter-edit--window-configuration)
+         filters-changed)
+    (when quit
+      (with-current-buffer parent
+        (when logview--preview-filter-text
+          (setf logview--preview-filter-text nil
+                filters-changed              t))))
+    (when process-filters
       (if (eq mode 'views)
           (let ((new-views (save-excursion
                              (goto-char 1)
@@ -4024,14 +4056,18 @@ only edits after it get discarded."
             (logview--after-updating-view-definitions)
             (with-current-buffer parent
               (logview--update-mode-name)))
-        (let ((filters      (when save
-                              (buffer-substring-no-properties 1 (1+ (buffer-size)))))
+        (let ((filters      (buffer-substring-no-properties 1 (1+ (buffer-size))))
               (hint-comment (logview-filter-edit--hint-comment)))
             (when (string-prefix-p hint-comment filters)
               (setf filters (substring filters (length hint-comment))))
             (with-current-buffer parent
-              (setf (if (eq mode 'main-filters) logview--main-filter-text logview--thread-narrowing-filter-text) filters)
-              (logview--parse-filters)))))
+              (if (eq process-filters 'preview)
+                  (setf logview--preview-filter-text `(,(eq mode 'main-filters) . ,filters))
+                (setf (if (eq mode 'main-filters) logview--main-filter-text logview--thread-narrowing-filter-text) filters))
+              (setf filters-changed t)))))
+    (when filters-changed
+      (with-current-buffer parent
+        (logview--parse-filters)))
     (when quit
       (kill-buffer)
       (switch-to-buffer parent)
@@ -4123,6 +4159,21 @@ only edits after it get discarded."
                           t)))
                (put-text-property begin end 'face 'error))
              (< (point) region-end))))))))
+
+(defun logview-filter-edit--schedule-preview (&rest _ignored)
+  (unless (or logview-filter-edit--preview-timer (eq logview-filter-edit--mode 'views))
+    (setf logview-filter-edit--preview-timer (run-with-idle-timer 0.2 nil #'logview-filter-edit--trigger-preview (current-buffer)))))
+
+(defun logview-filter-edit--trigger-preview (buffer)
+  (let ((debug-on-error t))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (logview-filter-edit--do 'preview nil)
+        ;; Clear the timer only now, so if it gets rescheduled above, it gets removed
+        ;; instantly.
+        (when logview-filter-edit--preview-timer
+          (cancel-timer logview-filter-edit--preview-timer)
+          (setf logview-filter-edit--preview-timer nil))))))
 
 (defun logview-filter-edit--hint-comment ()
   (pcase logview-filter-edit--mode
