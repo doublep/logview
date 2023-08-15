@@ -433,6 +433,15 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :group 'logview
   :type  'boolean)
 
+(defcustom logview-preview-filter-changes t
+  "Whether to preview filters as they are being edited.
+This preview is activated whenever you change the filters in the
+buffer popped up by `\\<logview-mode-map>\\[logview-edit-filters]' or `\\<logview-mode-map>\\[logview-edit-thread-narrowing-filters]'.
+
+To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-filter-preview]'."
+  :group 'logview
+  :type  'boolean)
+
 (defcustom logview-show-ellipses t
   "Whether to show ellipses to indicate hidden log entries.
 
@@ -866,6 +875,7 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (auto-revert-tail-mode                                                  "Toggle Auto-Revert Tail mode")
      (logview-toggle-copy-visible-text-only                                  "Toggle ‘copy only visible text’")
      (logview-toggle-search-only-in-messages                                 "Toggle ‘search only in messages’")
+     (logview-toggle-filter-preview                                          "Toggle ‘preview filter changes’")
      (logview-toggle-show-ellipses                                           "Toggle ‘show ellipses’")
      "Options can be customized globally or changed in each buffer.")
     ("Miscellaneous"
@@ -1154,6 +1164,7 @@ that the line is not the first in the buffer."
                        ("o t" auto-revert-tail-mode)
                        ("o v" logview-toggle-copy-visible-text-only)
                        ("o m" logview-toggle-search-only-in-messages)
+                       ("o p" logview-toggle-filter-preview)
                        ("o e" logview-toggle-show-ellipses)
                        ("o g" logview-change-target-gap-length)
                        ("o s" logview-choose-submode)
@@ -2566,6 +2577,21 @@ argument is positive, disable it otherwise."
                                   "Incremental search will find matches only in messages"
                                   "Incremental search will behave normally"))
 
+(defun logview-toggle-filter-preview (&optional arg)
+  "Toggle `logview-preview-filter-changes' just for this buffer.
+If invoked with prefix argument, enable the option if the
+argument is positive, disable it otherwise.
+
+This command may be invoked from filter editing buffer too.  In
+this case, it affects its associated log buffer."
+  (interactive (list (or current-prefix-arg 'toggle)))
+  (with-current-buffer (or (when (eq major-mode 'logview-filter-edit-mode) logview-filter-edit--parent-buffer)
+                           (current-buffer))
+    (logview--toggle-option-locally 'logview-preview-filter-changes arg (called-interactively-p 'interactive)
+                                    "Filtering results will be shown on-the-fly when possible"
+                                    "New filters will only take effect when pressing `C-c C-c' or `C-c C-a'")
+    (logview--parse-filters)))
+
 (defun logview-toggle-show-ellipses (&optional arg)
   "Toggle `logview-show-ellipses' just for this buffer.
 If invoked with prefix argument, enable the option if the
@@ -3361,7 +3387,7 @@ See `logview--iterate-entries-forward' for details."
 (defun logview--parse-filters (&optional to-reset)
   (let ((main-filters             logview--main-filter-text)
         (thread-narrowing-filters logview--thread-narrowing-filter-text)
-        (preview-filters          logview--preview-filter-text))
+        (preview-filters          (when logview-preview-filter-changes logview--preview-filter-text)))
     (when preview-filters
       (setf (if (car preview-filters) main-filters thread-narrowing-filters) (cdr preview-filters)))
     (let ((filters (logview--do-parse-filters main-filters thread-narrowing-filters to-reset)))
@@ -3997,7 +4023,8 @@ This list is preserved across Emacs session in
   (let ((map (make-sparse-keymap)))
     (dolist (binding '(("C-c C-c" logview-filter-edit-save)
                        ("C-c C-a" logview-filter-edit-apply)
-                       ("C-c C-k" logview-filter-edit-cancel)))
+                       ("C-c C-k" logview-filter-edit-cancel)
+                       ("C-c C-p" logview-toggle-filter-preview)))
       (define-key map (kbd (car binding)) (cadr binding)))
     map))
 
