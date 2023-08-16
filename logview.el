@@ -644,7 +644,7 @@ settings) with this face.")
                                                           (group "THREAD") (group "IGNORED") (group "MESSAGE"))   ;; 1--6, see above
                                                   eow)
                                              (seq "<<RX:" (or (group "NAME") (group "THREAD") (group "IGNORED"))  ;; 7--9
-                                                  ":" (group (+? anychar)) ">>"))))                               ;; 10
+                                                  ":" (group (+? anything)) ">>"))))                               ;; 10
 (defconst logview--timestamp-entry-part-regexp (rx bow "TIMESTAMP" eow))
 
 (defvar logview--datetime-matching-options '(:second-fractional-extension t
