@@ -148,6 +148,16 @@
     (logview-difference-to-current-entry)
     (logview-go-to-difference-base-entry)))
 
+;; See https://github.com/doublep/logview/issues/48 for rationale to have this at all.
+(ert-deftest logview-test-custom-submode-with-special-regexp ()
+  (logview--test-with-file "custom/2.log"
+    :extra-customizations '((logview-additional-submodes
+                             '(("custom" (format . "TIMESTAMP IGNORED LEVEL T: <<RX:THREAD:[^-]+>> NAME - MESSAGE") (levels . "SLF4J")))))
+    (should (equal logview--submode-name "custom"))
+    (logview--locate-current-entry entry start
+      (should (and entry (equal start 1)))
+      (should (equal (logview--entry-group entry start logview--name-group) "WhateverName")))))
+
 ;; Bug: Logview would ignore entry lines if they didn't contain a space at the end.  This
 ;; would e.g. happen if you had code like 'log.info ("\n...");' in your program.
 (ert-deftest logview-test-multiline-entries ()

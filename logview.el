@@ -640,13 +640,11 @@ settings) with this face.")
 (defconst logview--final-levels '(error warning information debug trace)
   "List of final (submode-independent) levels, most to least severe.")
 
-(defconst logview--entry-part-regexp (rx bow (or (group "TIMESTAMP")
-                                                 (group "LEVEL")
-                                                 (group "NAME")
-                                                 (group "THREAD")
-                                                 (group "IGNORED")
-                                                 (group "MESSAGE"))
-                                         eow))
+(defconst logview--entry-part-regexp (rx (or (seq bow (or (group "TIMESTAMP") (group "LEVEL") (group "NAME")
+                                                          (group "THREAD") (group "IGNORED") (group "MESSAGE"))   ;; 1--6, see above
+                                                  eow)
+                                             (seq "<<RX:" (or (group "NAME") (group "THREAD") (group "IGNORED"))  ;; 7--9
+                                                  ":" (group (+? anychar)) ">>"))))                               ;; 10
 (defconst logview--timestamp-entry-part-regexp (rx bow "TIMESTAMP" eow))
 
 (defvar logview--datetime-matching-options '(:second-fractional-extension t
@@ -2931,48 +2929,56 @@ returns non-nil."
              (setq have-explicit-message t))
             (t
              (dolist (k (list logview--name-group logview--thread-group logview--ignored-group))
-               (when (match-beginning k)
-                 (push (format "\\(?%s:%s\\)"
-                               (if (/= k logview--ignored-group)
-                                   (number-to-string k)
-                                 "")
-                               (cond ((and starter terminator
-                                           (or (and (= starter ?\() (= terminator ?\)))
-                                               (and (= starter ?\[) (= terminator ?\]))))
-                                      ;; See https://github.com/doublep/logview/issues/2
-                                      ;; We allow _one_ level of nested parens inside
-                                      ;; parenthesized THREAD or NAME.  Allowing more would
-                                      ;; complicate regexp even further.  Unlimited nesting
-                                      ;; level is not possible with regexps at all.
-                                      ;;
-                                      ;; 'rx-to-string' is used to avoid escaping things
-                                      ;; ourselves.
-                                      (rx-to-string `(seq (* (not (any ,starter ,terminator ?\n)))
-                                                          (* ,starter (* (not (any ?\n))) ,terminator
-                                                             (* (not (any ,starter ,terminator ?\n)))))
-                                                    t))
-                                     ((and terminator (/= terminator ? ))
-                                      (format "[^%c\n]*" terminator))
-                                     (terminator
-                                      "[^ \t\n]+")
-                                     (t
-                                      ".+")))
-                       parts)
-                 (push (if (= k logview--name-group) 'name 'thread) features)))))
+               ;; See definition of `logview--entry-part-regexp' for the meaning of 4 and 10.
+               (let ((special-regexp (match-beginning (+ k 4))))
+                 (when (or (match-beginning k) special-regexp)
+                   (push (format "\\(?%s:%s\\)"
+                                 (if (/= k logview--ignored-group)
+                                     (number-to-string k)
+                                   "")
+                                 (cond (special-regexp
+                                        (let ((forced-regexp (match-string 10 format)))
+                                          (unless (logview--valid-regexp-p forced-regexp)
+                                            ;; Ideally would also ensure that there are no catching groups,
+                                            ;; but for this we'd need `xr' as dependency.  Not now.
+                                            (warn "In format specifier `%s': `%s' is not a valid regexp" format forced-regexp)
+                                            (setf cannot-match t))
+                                          forced-regexp))
+                                       ((and starter terminator
+                                             (or (and (= starter ?\() (= terminator ?\)))
+                                                 (and (= starter ?\[) (= terminator ?\]))))
+                                        ;; See https://github.com/doublep/logview/issues/2 We allow _one_
+                                        ;; level of nested parens inside parenthesized THREAD or NAME.
+                                        ;; Allowing more would complicate regexp even further.  Unlimited
+                                        ;; nesting level is not possible with regexps at all.
+                                        ;;
+                                        ;; 'rx-to-string' is used to avoid escaping things ourselves.
+                                        (rx-to-string `(seq (* (not (any ,starter ,terminator ?\n)))
+                                                            (* ,starter (* (not (any ?\n))) ,terminator
+                                                               (* (not (any ,starter ,terminator ?\n)))))
+                                                      t))
+                                       ((and terminator (/= terminator ? ))
+                                        (format "[^%c\n]*" terminator))
+                                       (terminator
+                                        "[^ \t\n]+")
+                                       (t
+                                        ".+")))
+                              parts)
+                        (push (if (= k logview--name-group) 'name 'thread) features))))))
       (setq search-from end))
-    (when (< search-from (length format))
-      (funcall add-text-part search-from nil))
-    ;; Unless `MESSAGE' field is used explicitly, behave as if format string ends with whitespace.
-    (unless (or have-explicit-message (string-match-p "[ \t]$" format))
-      (push "\\(?:[ \t]+\\|$\\)" parts))
-    (setq parts (nreverse parts))
-    (when timestamp-at
-      ;; Speed optimization: if the submode includes a timestamp, but
-      ;; the test line doesn't have even two digits at the expected
-      ;; place, don't even loop through all the timestamp options.
-      (setcar timestamp-at ".*[0-9][0-9].*")
-      (when (and test-line (not (string-match-p (apply #'concat parts) test-line)))
-        (setq cannot-match t)))
+    (unless cannot-match
+      (when (< search-from (length format))
+        (funcall add-text-part search-from nil))
+      ;; Unless `MESSAGE' field is used explicitly, behave as if format string ends with whitespace.
+      (unless (or have-explicit-message (string-match-p "[ \t]$" format))
+        (push "\\(?:[ \t]+\\|$\\)" parts))
+      (setq parts (nreverse parts))
+      (when timestamp-at
+        ;; Speed optimization: if the submode includes a timestamp, but the test line doesn't have even two
+        ;; digits at the expected place, don't even loop through all the timestamp options.
+        (setcar timestamp-at ".*[0-9][0-9].*")
+        (when (and test-line (not (string-match-p (apply #'concat parts) test-line)))
+          (setq cannot-match t))))
     (unless cannot-match
       (dolist (timestamp-option (if timestamp-at timestamp-options '(nil)))
         (let* ((timestamp-pattern (assq 'java-pattern timestamp-option))

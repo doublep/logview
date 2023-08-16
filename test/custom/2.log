@@ -1,0 +1,3 @@
+2023-07-19 14:10:02.736 GMT+08:00 INFO T: Fake Thread WhateverName - see https://github.com/doublep/logview/issues/48
+2023-07-19 14:10:02.736 GMT+08:00 DEBUG T: Subscription Manager Consumer Thread LottieLockView - loading from filesystem
+2023-07-19 14:10:02.739 GMT+08:00 DEBUG T: pool-40-thread-1 LottieLockView - starting to play t4.json
