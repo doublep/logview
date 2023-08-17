@@ -152,11 +152,22 @@
 (ert-deftest logview-test-custom-submode-with-special-regexp ()
   (logview--test-with-file "custom/2.log"
     :extra-customizations '((logview-additional-submodes
-                             '(("custom" (format . "TIMESTAMP IGNORED LEVEL T: <<RX:THREAD:[^-]+>> NAME - MESSAGE") (levels . "SLF4J")))))
+                             '(("custom" (format . "TIMESTAMP IGNORED LEVEL T: <<RX:THREAD:.+?>> NAME - MESSAGE") (levels . "SLF4J")))))
     (should (equal logview--submode-name "custom"))
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1)))
-      (should (equal (logview--entry-group entry start logview--name-group) "WhateverName")))))
+      (should (equal (logview--entry-group entry start logview--name-group)   "WhateverName"))
+      (should (equal (logview--entry-group entry start logview--thread-group) "Fake Thread")))
+    (forward-line)
+    (logview--locate-current-entry entry start
+      (should entry)
+      (should (equal (logview--entry-group entry start logview--name-group)   "LottieLockView"))
+      (should (equal (logview--entry-group entry start logview--thread-group) "Subscription Manager Consumer Thread")))
+    (forward-line)
+    (logview--locate-current-entry entry start
+      (should entry)
+      (should (equal (logview--entry-group entry start logview--name-group)   "LottieLockView"))
+      (should (equal (logview--entry-group entry start logview--thread-group) "pool-40-thread-1")))))
 
 ;; Bug: Logview would ignore entry lines if they didn't contain a space at the end.  This
 ;; would e.g. happen if you had code like 'log.info ("\n...");' in your program.
