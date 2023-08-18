@@ -172,6 +172,11 @@ see if anything goes wrong.  The easiest way to figure it out is to
 add a few filters using commands described earlier and then open this
 buffer with `f` and see how they are represented.
 
+Changes in the buffer popped up with `f` (or <<thread-narrowing,Y>>)
+are previewed in the main buffer on-the-fly.  If you don’t like this,
+customize variable `logview-preview-filter-changes`, toggle this in
+the main buffer using `o p` or in the filter buffer with `C-c C-p`.
+
 === Filter regexp details
 
 Regular expressions can be matched against entry parts either
@@ -502,6 +507,7 @@ changed in each individual buffer.
 * Toggle Auto-Revert Tail mode: `o t`
 * Toggle “copy only visible text”: `o v`
 * Toggle “search only in messages”: `o m`
+* Toggle “preview filtering results”: `o p`
 * Toggle “show ellipses”: `o e`
 
 === Miscellaneous
