@@ -4065,7 +4065,10 @@ afterwards will only reset to the last applied state, not
 necessarily to the filters (views) how they were when the buffer
 got created."
   (interactive)
-  (logview-filter-edit--do t nil))
+  (logview-filter-edit--do t nil)
+  ;; Because of possible preview and because the filter buffer is not closed, it may not
+  ;; be obvious otherwise that something is done at all.
+  (message "Filters have been applied successfully"))
 
 (defun logview-filter-edit-cancel ()
   "Quit the buffer and its window, discarding all edits.
