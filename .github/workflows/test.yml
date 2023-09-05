@@ -37,6 +37,9 @@ jobs:
 
     - name: Check out the source code
       uses: actions/checkout@v4
+      with:
+        # To make automated copyright notice check below work.  Can this be optimized?
+        fetch-depth: 0
 
     - name: Test the project
       run: |
@@ -46,3 +49,7 @@ jobs:
     - name: Lint the project
       run: |
         eldev -p -dtT -C lint
+
+    - name: Ensure that copyright notices are up-to-date
+      run: |
+        eldev -p -dvQTC doctor up-to-date-copyright --all-tests
