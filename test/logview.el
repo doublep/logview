@@ -78,6 +78,12 @@
       ,@etc)))
 
 
+(defun logview--test-view-customizations (&rest views)
+  `((logview--views             '(,@views))
+    (logview--views-initialized t)
+    (logview--views-need-saving nil)))
+
+
 (ert-deftest logview-test-log4j-standard-1 ()
   (logview--test-with-file "log4j/en-1.log"
     (should (equal logview--submode-name "SLF4J"))
@@ -354,10 +360,7 @@
 ;; implement.
 (ert-deftest logview-test-sections-1 ()
   (logview--test-with-file "log4j/sections-1.log"
-    :extra-customizations '((logview--views
-                             '((:name "sections" :filters "lv INFO\na+ my\\.Server\nm+ serving request")))
-                            (logview--views-initialized t)
-                            (logview--views-need-saving nil))
+    :extra-customizations (logview--test-view-customizations '(:name "sections" :filters "lv INFO\na+ my\\.Server\nm+ serving request"))
     (logview-set-section-view "sections")
     (dolist (narrowing '((1 . 1) (2 . 1)))
       (save-restriction
@@ -518,6 +521,44 @@
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))
                 (logview--subtest t (logview-last-section-any-thread)
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))))))))))
+
+
+(ert-deftest logview-test-view-editing-1 ()
+  (logview--test-with-file "log4j/en-1.log"
+    :extra-customizations (logview--test-view-customizations)
+    (logview--do-test-view-editing t)))
+
+(ert-deftest logview-test-view-editing-2 ()
+  (logview--test-with-file "log4j/en-1.log"
+    :extra-customizations (logview--test-view-customizations)
+    (logview--do-test-view-editing nil)))
+
+(defun logview--do-test-view-editing (global)
+  (if global (logview-edit-all-views) (logview-edit-submode-views))
+  (insert (format "
+view errors%s
+LV ERROR
+" (if global "" "\nsubmode SLF4J")))
+  (logview-filter-edit-save)
+  (should (equal logview--views `((:name "errors" :submode ,(unless global "SLF4J") :filters "LV ERROR"))))
+  (should logview--views-need-saving)
+  ;; Pretend they are saved.  Edit name of the created view.
+  (setf logview--views-need-saving nil)
+  (if global (logview-edit-all-views) (logview-edit-submode-views))
+  (goto-char 1)
+  (re-search-forward "errors")
+  (replace-match "error view")
+  ;; Apply changes intermediately.
+  (logview-filter-edit-apply)
+  (should (equal logview--views `((:name "error view" :submode ,(unless global "SLF4J") :filters "LV ERROR"))))
+  (should logview--views-need-saving)
+  (setf logview--views-need-saving nil)
+  (goto-char 1)
+  (re-search-forward "error view")
+  (replace-match "Error view")
+  (logview-filter-edit-save)
+  (should (equal logview--views `((:name "Error view" :submode ,(unless global "SLF4J") :filters "LV ERROR"))))
+  (should logview--views-need-saving))
 
 
 (define-derived-mode logview--test-derived-mode logview-mode

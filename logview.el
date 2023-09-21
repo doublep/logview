@@ -4097,9 +4097,9 @@ only edits after it get discarded."
                   (dolist (view (logview--views))
                     (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
                       (push view combined-views)))
-                  (setq logview--views (nreverse combined-views)))
-              (setq logview--views             new-views
-                    logview--views-need-saving t))
+                  (setf logview--views (nreverse combined-views)))
+              (setf logview--views new-views))
+            (setf logview--views-need-saving t)
             (logview--after-updating-view-definitions)
             (with-current-buffer parent
               (logview--update-mode-name)))
