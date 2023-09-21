@@ -45,7 +45,9 @@
         (:extra-customizations (setf extra-customizations (eval (pop body) t)))
         (:buffer-mode          (setf buffer-mode          (pop body)))))
     (dolist (customizable (custom-group-members 'logview nil))
-      (when (eq (cadr customizable) 'custom-variable)
+      ;; Byte-compiled `let' with double-binding for the same variable behaves differently
+      ;; than non-byte-compiled...  Avoid double-bindings to dodge this.
+      (when (and (eq (cadr customizable) 'custom-variable) (not (assq (car customizable) extra-customizations)))
         (push (list (car customizable) (list 'quote (eval (car (get (car customizable) 'standard-value)) t))) erase-customizations)))
     `(let (,@erase-customizations
            ,@extra-customizations
@@ -78,10 +80,12 @@
       ,@etc)))
 
 
-(defun logview--test-view-customizations (&rest views)
-  `((logview--views             '(,@views))
-    (logview--views-initialized t)
-    (logview--views-need-saving nil)))
+;; This can get called from `logview--test-with-file' at compilation time.
+(eval-and-compile
+  (defun logview--test-view-customizations (&rest views)
+    `((logview--views             '(,@views))
+      (logview--views-initialized t)
+      (logview--views-need-saving nil))))
 
 
 (ert-deftest logview-test-log4j-standard-1 ()
