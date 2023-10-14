@@ -31,6 +31,11 @@
   (error "Warning elevated to an error: %S" arguments))
 
 (defmacro logview--test-with-file (filename &rest body)
+  "Activate Logview in a temporary buffer with contents of the file.
+Instead of visiting the file, this macro creates a new buffer for
+it.  This avoids annoying clashes if the file is already open
+(when in interactive mode) and also allows to further modify
+buffer if the test needs that."
   (declare (debug (form body))
            (indent 1))
   ;; We do the following to avoid customizations influence testing
@@ -59,6 +64,23 @@
              (,(or buffer-mode 'logview-mode))
              ,@body)
          (advice-remove 'display-warning #'logview--test-display-warning-advice)))))
+
+
+(defun logview--test-user-visible-buffer-string ()
+  (font-lock-ensure)
+  (let ((from (point-min))
+        chunks)
+    (while from
+      (let ((to (next-property-change from)))
+        (unless (invisible-p from)
+          (let ((display-as (get-text-property from 'display)))
+            (unless (and display-as to (eq display-as (get-text-property to 'display)))
+              (push (cond ((stringp display-as) display-as)
+                          (display-as           (prin1-to-string display-as))
+                          (t                    (buffer-substring-no-properties from (or to (point-max)))))
+                    chunks))))
+        (setf from to)))
+    (mapconcat #'identity (nreverse chunks) nil)))
 
 
 (defun logview--test-current-message ()
@@ -157,6 +179,59 @@
                              '(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J")))))
     (logview-difference-to-current-entry)
     (logview-go-to-difference-base-entry)))
+
+(ert-deftest logview-hidden-difference-base ()
+  (logview--test-with-file "log4j/sections-1.log"
+    ;; Testing only one line, but it should hopefully be the same for other lines.
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (logview-next-entry)
+    (logview-difference-to-current-entry)
+    (should (string-match-p (rx bol "                 -0.100 [thread 1] DEBUG my.Startup - starting up" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (goto-char 1)
+    (logview-go-to-difference-base-entry)
+    (should (looking-at (rx "before any sections" eol)))
+    (logview-show-errors-warnings-and-information)
+    ;; Must be filtered out and invisible now.
+    (should-not (string-match-p (rx bol "2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                                (logview--test-user-visible-buffer-string)))
+    (should-error (logview-go-to-difference-base-entry) :type 'user-error)))
+
+(ert-deftest logview-time-differences-after-full-buffer-reload ()
+  ;; Using a test file with different timestamps for different entries.
+  (logview--test-with-file "log4j/sections-1.log"
+    ;; Testing only one line, but it should hopefully be the same for other lines.
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (logview-difference-to-current-entry)
+    ;; This first entry should stay the same (not because it's the first, but because it's
+    ;; the difference base).
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.000 [thread 1] DEBUG my.Startup - starting up" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "                 +0.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (goto-char (point-max))
+    (logview-go-to-difference-base-entry)
+    (should (looking-at (rx "starting up" eol)))
+    ;; Emulate the log being fully changed, e.g. due to file rotation.
+    (logview--std-altering
+      (save-excursion
+        (goto-char (point-min))
+        (while (re-search-forward (rx "20:03:") nil t)
+          (replace-match "20:05:")
+          (end-of-line)
+          (insert " (changed)"))))
+    (logview--invalidate-region-entries (point-min) (point-max))
+    ;; Same buffer position, but the entry is now different, so must display time
+    ;; difference.
+    (should (string-match-p (rx bol "               +120.000 [thread 1] DEBUG my.Startup - starting up (changed)" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "               +120.100 [thread 1] DEBUG my.Class - before any sections (changed)" eol)
+                            (logview--test-user-visible-buffer-string)))))
+
 
 ;; See https://github.com/doublep/logview/issues/48 for rationale to have this at all.
 (ert-deftest logview-custom-submode-with-special-regexp ()

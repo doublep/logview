@@ -701,9 +701,11 @@ settings) with this face.")
 (defvar-local logview--hide-all-details   nil)
 
 (defvar-local logview--timestamp-difference-base nil
-  "Either nil or (POSITION . TIMESTAMP-AS-FLOAT).")
+  "Either nil or (ENTRY . START).
+ENTRY will have its timestamp parsed.")
 (defvar-local logview--timestamp-difference-per-thread-bases nil
-  "Either nil or a hash-table of strings to cons cells.")
+  "Either nil or a hash-table of strings to cons cells.
+See `logview--timestamp-difference-base' for details.")
 
 (defvar-local logview--buffer-target-gap-length nil)
 (defvar-local logview--last-found-large-gap     nil)
@@ -2395,10 +2397,13 @@ difference bases (appointed with `\\<logview-mode-map>\\[logview-thread-differen
   (logview--assert 'timestamp)
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
-      (unless (and (equal (cdr logview--timestamp-difference-base) start) (null logview--timestamp-difference-per-thread-bases))
-        (setq logview--timestamp-difference-base             (cons entry start)
-              logview--timestamp-difference-per-thread-bases nil)
-        (logview--refontify-buffer)))))
+      ;; Make sure that it is parsed.
+      (logview--entry-timestamp entry start)
+      (let ((base (cons entry start)))
+        (unless (and (equal logview--timestamp-difference-base base) (null logview--timestamp-difference-per-thread-bases))
+          (setq logview--timestamp-difference-base             base
+                logview--timestamp-difference-per-thread-bases nil)
+          (logview--refontify-buffer))))))
 
 (defun logview-thread-difference-to-current-entry ()
   "Display difference to current entry's timestamp in its thread.
@@ -2408,11 +2413,14 @@ it stays in effect for other threads."
   (logview--assert 'timestamp 'thread)
   (logview--std-temporarily-widening
     (logview--locate-current-entry entry start
-      (let ((thread (logview--entry-group entry start logview--thread-group)))
-        (unless (and logview--timestamp-difference-per-thread-bases (equal (cdr (gethash thread logview--timestamp-difference-per-thread-bases)) start))
+      ;; Make sure that it is parsed.
+      (logview--entry-timestamp entry start)
+      (let ((base   (cons entry start))
+            (thread (logview--entry-group entry start logview--thread-group)))
+        (unless (and logview--timestamp-difference-per-thread-bases (equal (gethash thread logview--timestamp-difference-per-thread-bases) base))
           (unless logview--timestamp-difference-per-thread-bases
             (setq logview--timestamp-difference-per-thread-bases (make-hash-table :test #'equal)))
-          (puthash thread (cons entry start) logview--timestamp-difference-per-thread-bases)
+          (puthash thread base logview--timestamp-difference-per-thread-bases)
           (logview--refontify-buffer))))))
 
 (defun logview-go-to-difference-base-entry ()
@@ -2427,10 +2435,10 @@ it stays in effect for other threads."
                                   logview--timestamp-difference-base)))
         (unless difference-base
           (user-error "There is no timestamp difference base for the current entry"))
-        (when (invisible-p difference-base)
-          (user-error "Timestamp difference base for the current entry is currently hidden"))
-        (let* ((entry (car difference-base))
-               (start (cdr difference-base)))
+        (when (invisible-p (cdr difference-base))
+          (user-error "Timestamp difference base is either hidden or not in the current file contents anymore (e.g. due to log rolling)"))
+        (let ((entry (car difference-base))
+              (start (cdr difference-base)))
           (unless (and (< start (logview--point-max)) (> (logview--entry-end entry start) (logview--point-min)))
             (user-error "Difference base entry is outside the narrowing region"))
           (goto-char (logview--entry-message-start entry start))
@@ -3870,9 +3878,9 @@ This list is preserved across Emacs session in
                        (have-name                   (memq 'name      logview--submode-features))
                        (have-thread                 (memq 'thread    logview--submode-features))
                        (validator                   (cdr logview--effective-filter))
-                       (difference-base             logview--timestamp-difference-base)
+                       (common-difference-base      logview--timestamp-difference-base)
                        (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
-                       (displaying-differences      (or difference-base difference-bases-per-thread))
+                       (displaying-differences      (or common-difference-base difference-bases-per-thread))
                        (difference-format-string    logview--timestamp-difference-format-string)
                        (header-filter               (cdr logview--section-header-filter))
                        (highlighter                 (cdr logview--highlighted-filter))
@@ -3898,8 +3906,12 @@ This list is preserved across Emacs session in
                                  (when displaying-differences
                                    (let ((difference-base (or (when difference-bases-per-thread
                                                                 (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
-                                                              difference-base)))
-                                     (when (and difference-base (not (= (cdr difference-base) start)))
+                                                              common-difference-base)))
+                                     ;; Hide timestamp with time difference if there is a difference
+                                     ;; base entry and we are not positioned over it right now.
+                                     (when (and difference-base (not (and (= (cdr difference-base) start)
+                                                                          (progn (logview--entry-timestamp entry start)  ; Make sure that it is parsed.
+                                                                                 (equal (car difference-base) entry)))))
                                        ;; FIXME: It is possible that fractionals are not the last
                                        ;;        thing in the timestamp, in which case it would be
                                        ;;        nicer to add some spaces on the right. However,
