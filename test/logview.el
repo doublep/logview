@@ -88,13 +88,13 @@
       (logview--views-need-saving nil))))
 
 
-(ert-deftest logview-test-log4j-standard-1 ()
+(ert-deftest logview-log4j-standard-1 ()
   (logview--test-with-file "log4j/en-1.log"
     (should (equal logview--submode-name "SLF4J"))
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-test-log4j-standard-2 ()
+(ert-deftest logview-log4j-standard-2 ()
   ;; The start of the first entry in this file is not on the first line.
   (logview--test-with-file "log4j/part.log"
     (should (equal logview--submode-name "SLF4J"))
@@ -102,32 +102,32 @@
       ;; Adjust the number accordingly if you change that file for whatever reason.
       (should (and entry (equal start 174))))))
 
-(ert-deftest logview-test-log4j-national-timestamp-1 ()
+(ert-deftest logview-log4j-national-timestamp-1 ()
   (logview--test-with-file "log4j/fr-1.log"
     (should (equal logview--submode-name "SLF4J"))))
 
-(ert-deftest logview-test-log4j-national-timestamp-2 ()
+(ert-deftest logview-log4j-national-timestamp-2 ()
   ;; It's the same as above, but without comma in the timestamp.  See
   ;; `logview--all-timestamp-formats'.
   (logview--test-with-file "log4j/fr-2.log"
     (should (equal logview--submode-name "SLF4J"))))
 
 ;; Issue #2.
-(ert-deftest logview-test-log4j-parens-in-thread-name ()
+(ert-deftest logview-log4j-parens-in-thread-name ()
   (logview--test-with-file "log4j/parens-in-thread-name.log"
     (should (equal logview--submode-name "SLF4J"))
     ;; Make sure that the second line is also recognized as an entry.
     ;; If it isn't, this will signal an error.
     (logview-next-entry)))
 
-(ert-deftest logview-test-go-to-message-beginning-1 ()
+(ert-deftest logview-go-to-message-beginning-1 ()
   (logview--test-with-file "log4j/navigation-1.log"
     (should (equal logview--submode-name "SLF4J"))
     (forward-line 2)
     (logview-go-to-message-beginning)
     (should (looking-at "message 3$"))))
 
-(ert-deftest logview-test-go-to-message-beginning-2 ()
+(ert-deftest logview-go-to-message-beginning-2 ()
   (logview--test-with-file "log4j/navigation-1.log"
     (should (equal logview--submode-name "SLF4J"))
     (transient-mark-mode 1)
@@ -137,13 +137,13 @@
     (should (string= (buffer-substring-no-properties (region-beginning) (region-end)) "message 3"))
     (should (use-region-p))))
 
-(ert-deftest logview-test-unix-standard-1 ()
+(ert-deftest logview-unix-standard-1 ()
   (logview--test-with-file "unix/1.log"
     (should (equal logview--submode-name "UNIX"))
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-test-custom-submode-1 ()
+(ert-deftest logview-custom-submode-1 ()
   (logview--test-with-file "custom/1.log"
     :extra-customizations '((logview-additional-submodes
                              '(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J")))))
@@ -151,7 +151,7 @@
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-test-go-to-difference-base-entry-no-thread ()
+(ert-deftest logview-go-to-difference-base-entry-no-thread ()
   (logview--test-with-file "custom/1.log"
     :extra-customizations '((logview-additional-submodes
                              '(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J")))))
@@ -159,7 +159,7 @@
     (logview-go-to-difference-base-entry)))
 
 ;; See https://github.com/doublep/logview/issues/48 for rationale to have this at all.
-(ert-deftest logview-test-custom-submode-with-special-regexp ()
+(ert-deftest logview-custom-submode-with-special-regexp ()
   (logview--test-with-file "custom/2.log"
     :extra-customizations '((logview-additional-submodes
                              '(("custom" (format . "TIMESTAMP IGNORED LEVEL T: <<RX:THREAD:.+?>> NAME - MESSAGE") (levels . "SLF4J")))))
@@ -181,7 +181,7 @@
 
 ;; Bug: Logview would ignore entry lines if they didn't contain a space at the end.  This
 ;; would e.g. happen if you had code like 'log.info ("\n...");' in your program.
-(ert-deftest logview-test-multiline-entries ()
+(ert-deftest logview-multiline-entries ()
   (logview--test-with-file "log4j/multiline-entries.log"
     (should (equal logview--submode-name "SLF4J"))
     ;; There are three entries in the file.
@@ -198,14 +198,14 @@
 ;; which isn't defined in RFC 5424.
 ;;
 ;; TODO:  An epic case of DRY in these tests, maybe a function would be a good idea?
-(ert-deftest logview-test-rfc5424-level-0-emergency ()
+(ert-deftest logview-rfc5424-level-0-emergency ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 0))
     (logview-go-to-message-beginning)
     (should (looking-at "Emergency message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-1-alert ()
+(ert-deftest logview-rfc5424-level-1-alert ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 1)
@@ -213,7 +213,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Alert message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-2-critical ()
+(ert-deftest logview-rfc5424-level-2-critical ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 2)
@@ -221,7 +221,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Critical message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-3-error ()
+(ert-deftest logview-rfc5424-level-3-error ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 3)
@@ -229,7 +229,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Error message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-4-warning ()
+(ert-deftest logview-rfc5424-level-4-warning ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 4)
@@ -237,7 +237,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Warning message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-5-notice ()
+(ert-deftest logview-rfc5424-level-5-notice ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 5)
@@ -245,7 +245,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Notice message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-6-info ()
+(ert-deftest logview-rfc5424-level-6-info ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 6)
@@ -253,7 +253,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Info message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-7-debug ()
+(ert-deftest logview-rfc5424-level-7-debug ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 7)
@@ -261,7 +261,7 @@
     (logview-go-to-message-beginning)
     (should (looking-at "Debug message.$"))))
 
-(ert-deftest logview-test-rfc5424-level-undefined ()
+(ert-deftest logview-rfc5424-level-undefined ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     ;; (logview-next-entry 8)
@@ -271,7 +271,7 @@
     ;; (should (looking-at "No such level defined by RFC 5424.$"))))
     (should (looking-at ""))))
 
-(ert-deftest logview-test-rfc5424-level-defined-level-after-an-undefined-one ()
+(ert-deftest logview-rfc5424-level-defined-level-after-an-undefined-one ()
   (logview--test-with-file "levels/rfc-5424-levels.log"
     (should (equal logview--submode-name "Monolog"))
     (logview-next-entry 8)
@@ -280,21 +280,21 @@
     (should (looking-at "Info message after an invalid level.$"))))
 
 ;; Apache error log submode
-(ert-deftest logview-test-apache-submode-recognition ()
+(ert-deftest logview-apache-submode-recognition ()
   (logview--test-with-file "apache/error.log"
     (should (equal logview--submode-name "Apache Error Log"))))
 
-(ert-deftest logview-test-apache-submode-find-entries ()
+(ert-deftest logview-apache-submode-find-entries ()
   (logview--test-with-file "apache/error.log"
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-test-apache-submode-match-a-message ()
+(ert-deftest logview-apache-submode-match-a-message ()
   (logview--test-with-file "apache/error.log"
     (logview-go-to-message-beginning)
     (should (looking-at "Emergency message.$"))))
 
-(ert-deftest logview-test-apache-submode-match-a-message-after-undefined-lines ()
+(ert-deftest logview-apache-submode-match-a-message-after-undefined-lines ()
   (logview--test-with-file "apache/error.log"
     (logview-next-entry 8)
     (logview-go-to-message-beginning)
@@ -303,7 +303,7 @@
 ;; TODO: This, or something should test the eventual final levels
 ;; LogView Mode works with. With that transition, maybe the RFC 5424
 ;; and RFC 5424 lowercase level definitions could be merged.
-(ert-deftest logview-test-apache-submode-match-all-levels ()
+(ert-deftest logview-apache-submode-match-all-levels ()
   (logview--test-with-file "apache/error.log"
     (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 0))
     (logview-next-entry)
@@ -322,21 +322,21 @@
     (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 7))))
 
 ;; Monolog submode
-(ert-deftest logview-test-monolog-submode-recognition ()
+(ert-deftest logview-monolog-submode-recognition ()
   (logview--test-with-file "monolog/1.log"
     (should (equal logview--submode-name "Monolog"))))
 
-(ert-deftest logview-test-monolog-submode-find-entries ()
+(ert-deftest logview-monolog-submode-find-entries ()
   (logview--test-with-file "monolog/1.log"
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-test-monolog-submode-match-a-message ()
+(ert-deftest logview-monolog-submode-match-a-message ()
   (logview--test-with-file "monolog/1.log"
     (logview-go-to-message-beginning)
     (should (looking-at "Emergency message.$"))))
 
-(ert-deftest logview-test-monolog-submode-match-all-levels ()
+(ert-deftest logview-monolog-submode-match-all-levels ()
   (logview--test-with-file "monolog/1.log"
     (should (equal (logview--locate-current-entry entry nil (logview--entry-level entry)) 0))
     (logview-next-entry)
@@ -362,7 +362,7 @@
 ;; might count as belonging to unexpected sections.  All other behaviors I have considered
 ;; have their own downsides and surprising results as well, so I chose the one easiest to
 ;; implement.
-(ert-deftest logview-test-sections-1 ()
+(ert-deftest logview-sections-1 ()
   (logview--test-with-file "log4j/sections-1.log"
     :extra-customizations (logview--test-view-customizations '(:name "sections" :filters "lv INFO\na+ my\\.Server\nm+ serving request"))
     (logview-set-section-view "sections")
@@ -527,12 +527,12 @@
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))))))))))
 
 
-(ert-deftest logview-test-view-editing-1 ()
+(ert-deftest logview-view-editing-1 ()
   (logview--test-with-file "log4j/en-1.log"
     :extra-customizations (logview--test-view-customizations)
     (logview--do-test-view-editing t)))
 
-(ert-deftest logview-test-view-editing-2 ()
+(ert-deftest logview-view-editing-2 ()
   (logview--test-with-file "log4j/en-1.log"
     :extra-customizations (logview--test-view-customizations)
     (logview--do-test-view-editing nil)))
@@ -569,7 +569,7 @@ LV ERROR
   "Logview-derived"
   (font-lock-add-keywords nil `((,(rx bow "Class" eow) (0 'bold prepend)))  t))
 
-(ert-deftest logview-test-logview-derived-mode-1 ()
+(ert-deftest logview-derived-mode-1 ()
   (logview--test-with-file "log4j/en-1.log"
     :buffer-mode logview--test-derived-mode
     (font-lock-ensure)
