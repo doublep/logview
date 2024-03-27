@@ -27,6 +27,25 @@
 (defvar inhibit-message)
 
 
+(ert-deftest logview--temporarily-widening ()
+  (with-temp-buffer
+    (insert "foo bar baz")
+    ;; {LOCKED-NARROWING}
+    ;; Emulate the retarded locked narrowing with "standard" tags.  If someone uses a
+    ;; custom tag, Logview will have to fail, because it won't be able to work without
+    ;; full buffer access, but oh well, this is Emacs for you.  They allowed peasants to
+    ;; unlock at least something.
+    ;;
+    ;; Testing without emulation, with real Emacs-imposed locking seems unfeasible, since
+    ;; relevant font-locking code is not activated in batch mode.
+    (dolist (tag '(long-line-optimizations-in-fontification-functions long-line-optimizations-in-command-hooks))
+      (with-restriction 5 8
+        :label tag
+        (should (string= (buffer-string) "bar"))
+        (logview--temporarily-widening
+          (should (string= (buffer-string) "foo bar baz")))))))
+
+
 (defun logview--test-display-warning-advice (&rest arguments)
   (error "Warning elevated to an error: %S" arguments))
 

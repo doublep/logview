@@ -921,27 +921,19 @@ inside BODY.  In most cases (also if not sure) you should use
 macro `logview--std-temporarily-widening' instead."
   (declare (indent 0) (debug t))
   `(save-restriction
-     (logview--do-widen)
-     ,@body))
+     ;; {LOCKED-NARROWING}
+     ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all
+     ;; tags I could find in Emacs source code.  Normally this should be enough, but there
+     ;; is obviously no guarantee as macro `with-restriction' is part of public Elisp
+     ;; interface now.
+     (without-restriction
+       :label 'long-line-optimizations-in-fontification-functions
+       (without-restriction
+         :label 'long-line-optimizations-in-command-hooks
+         (logview--do-widen)
+         ,@body))))
 
 (defun logview--do-widen ()
-  ;; {LOCKED-NARROWING}
-  ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all tags I
-  ;; could find in Emacs source code.  Normally this should be enough, but there is
-  ;; obviously no guarantee with function `narrowing-lock' being part of public Lisp
-  ;; interface.
-  ;;
-  ;; Additionally, they had to rename everything in this retarded crap.  Twice so far.
-  (cond ((fboundp 'internal--unlabel-restriction)
-         (internal--unlabel-restriction 'long-line-optimizations-in-fontification-functions)
-         (internal--unlabel-restriction 'long-line-optimizations-in-command-hooks))
-        ((fboundp 'internal--unlock-narrowing)
-         (internal--unlock-narrowing 'long-line-optimizations-in-fontification-functions)
-         (internal--unlock-narrowing 'long-line-optimizations-in-command-hooks))
-        ((fboundp 'narrowing-unlock)
-         (narrowing-unlock 'fontification-functions)
-         (narrowing-unlock 'pre-command-hook)
-         (narrowing-unlock 'post-command-hook)))
   (widen)
   ;; If still not widened, then it is better to fail hard now than to face an arbitrary
   ;; and hard to predict failure later.  In particular, an infinite loop in fontification
@@ -1218,10 +1210,8 @@ successfully.")
   ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set
   ;; this variable in hope this prevents it from ever happening.
   ;;
-  ;; See what `logview--do-widen' does with these functions.  I don't see a way to test
-  ;; that in an automated way, because internally Emacs activates this optimization only
-  ;; in displaying code, which is never used in such setup at all.
-  (when (and (boundp 'long-line-threshold) (not (fboundp 'internal--unlabel-restriction)) (not (fboundp 'internal--unlock-narrowing)) (not (fboundp 'narrowing-unlock)))
+  ;; See how `logview--temporarily-widening' uses `without-restriction'.
+  (when (and (boundp 'long-line-threshold) (not (fboundp 'without-restriction)))
     (setq-local long-line-threshold nil))
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
