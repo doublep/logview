@@ -1,6 +1,6 @@
 ;;; -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2023 Paul Pogonyshev
+;; Copyright (C) 2018-2024 Paul Pogonyshev
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
