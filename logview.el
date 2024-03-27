@@ -920,18 +920,22 @@ Original point restrictions, if any, will not be possible to find
 inside BODY.  In most cases (also if not sure) you should use
 macro `logview--std-temporarily-widening' instead."
   (declare (indent 0) (debug t))
-  `(save-restriction
-     ;; {LOCKED-NARROWING}
-     ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all
-     ;; tags I could find in Emacs source code.  Normally this should be enough, but there
-     ;; is obviously no guarantee as macro `with-restriction' is part of public Elisp
-     ;; interface now.
-     (without-restriction
-       :label 'long-line-optimizations-in-fontification-functions
-       (without-restriction
-         :label 'long-line-optimizations-in-command-hooks
-         (logview--do-widen)
-         ,@body))))
+  (if (boundp 'without-restriction)
+      `(save-restriction
+         ;; {LOCKED-NARROWING}
+         ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all
+         ;; tags I could find in Emacs source code.  Normally this should be enough, but
+         ;; there is obviously no guarantee as macro `with-restriction' is part of public
+         ;; Elisp interface now.
+         (without-restriction
+           :label 'long-line-optimizations-in-fontification-functions
+           (without-restriction
+             :label 'long-line-optimizations-in-command-hooks
+             (logview--do-widen)
+             ,@body)))
+    `(save-restriction
+       (logview--do-widen)
+       ,@body)))
 
 (defun logview--do-widen ()
   (widen)
