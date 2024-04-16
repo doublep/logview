@@ -62,7 +62,7 @@
 ;; other rules, as '.log' is a common file extension.  This also gives
 ;; the user an easy way to prevent 'logview' from being autoselected.
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.log\\(?:\\.[0-9]+\\)?\\'" . logview-mode) t)
+(add-to-list 'auto-mode-alist '("\\.log\\(?:\\.[0-9\\-]+\\)?\\'" . logview-mode) t)
 
 
 
@@ -1760,9 +1760,9 @@ It is only for interactive use.  Non-interactively, use
 `logview-switch-to-view' instead."
   (interactive)
   (let* ((char  (if (integerp last-command-event)
-		    last-command-event
-		  (get last-command-event 'ascii-character)))
-	 (index (- (logand char #x7f) ?0)))
+                    last-command-event
+                  (get last-command-event 'ascii-character)))
+     (index (- (logand char #x7f) ?0)))
     (unless (<= 0 index 9)
       (user-error "This command must invoked by a numeric key, possibly with modifiers"))
     (logview-switch-to-view index)))
@@ -1847,7 +1847,7 @@ minibuffer."
                                          nil)
                                         (t
                                          (message "Please enter a number")
-	                                 (sit-for 1)
+                                         (sit-for 1)
                                          t))))
                          index))))
   (let ((view (logview--current-view)))
