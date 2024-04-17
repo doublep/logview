@@ -33,7 +33,8 @@
       `(with-restriction ,start ,end
          :label ,locking-label
          ,@body)
-    `(progn (narrow-to-region ,start ,end)
+    `(progn (ignore ,tag)
+            (narrow-to-region ,start ,end)
             ,@body)))
 
 
