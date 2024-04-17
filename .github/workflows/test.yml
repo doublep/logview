@@ -44,6 +44,9 @@ jobs:
     - name: Test the project
       run: |
         eldev -p -dtT -C test --expect 20
+
+    - name: Ensure clean byte-compilation
+      run: |
         eldev -dtT -C compile --set all --warnings-as-errors
 
     - name: Lint the project
