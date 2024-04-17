@@ -28,7 +28,8 @@
 
 
 (defmacro logview--test-with-restriction (start end locking-label &rest body)
-  (if (boundp 'with-restriction)
+  (declare (indent 3))
+  (if (fboundp 'with-restriction)
       `(with-restriction ,start ,end
          :label ,locking-label
          ,@body)
@@ -48,8 +49,7 @@
     ;; Testing without emulation, with real Emacs-imposed locking seems unfeasible, since
     ;; relevant font-locking code is not activated in batch mode.
     (dolist (tag '(long-line-optimizations-in-fontification-functions long-line-optimizations-in-command-hooks))
-      (logview--test-with-restriction 5 8
-        :label tag
+      (logview--test-with-restriction 5 8 tag
         (should (string= (buffer-string) "bar"))
         (logview--temporarily-widening
           (should (string= (buffer-string) "foo bar baz")))))))
