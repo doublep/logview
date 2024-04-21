@@ -1212,6 +1212,19 @@ successfully.")
 ;;;###autoload
 (define-derived-mode logview-mode nil "Logview"
   "Major mode for viewing and filtering various log files."
+  (let (successful)
+    (unwind-protect
+        (progn (logview--set-up)
+               (setf successful t))
+      (unless successful
+        ;; Don't leave the mode half-initialized if there is any unhandled error.  This is
+        ;; not how Emacs normally works, but standard way is too confusing to users and
+        ;; behavior depends on where exactly an error happened.  Also, as function
+        ;; `normal-mode' effectively eats the error (at least its backtrace), debugging it
+        ;; is nearly impossible anyway.
+        (fundamental-mode)))))
+
+(defun logview--set-up ()
   ;; {LOCKED-NARROWING}
   ;; Logview is incompatible with locked narrowing of Emacs 29.  Later snapshots sort of
   ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set

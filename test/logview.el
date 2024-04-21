@@ -22,9 +22,30 @@
 (require 'subr-x)
 
 
+(define-error 'logview-test-expected-error "Must be caught")
+
 (defvar logview--test-directory (file-name-directory (or load-file-name (buffer-file-name))))
 
 (defvar inhibit-message)
+
+
+;; Copied from Eldev source code, see documentation there.
+(defmacro logview--advised (spec &rest body)
+  (declare (indent 1) (debug (sexp body)))
+  (let ((symbol   (nth 0 spec))
+        (where    (nth 1 spec))
+        (function (nth 2 spec))
+        (props    (nthcdr 3 spec))
+        (fn       (make-symbol "$fn")))
+    `(let ((,fn ,function))
+       (when ,fn
+         (if (advice-member-p ,fn ,symbol)
+             (setf ,fn nil)
+           (advice-add ,symbol ,where ,fn ,@props)))
+       (unwind-protect
+           ,(macroexp-progn body)
+         (when ,fn
+           (advice-remove ,symbol ,fn))))))
 
 
 (defmacro logview--test-with-restriction (start end locking-label &rest body)
@@ -56,8 +77,22 @@
           (should (string= (buffer-string) "foo bar baz")))))))
 
 
-(defun logview--test-display-warning-advice (&rest arguments)
-  (error "Warning elevated to an error: %S" arguments))
+(ert-deftest logview-mode ()
+  (with-temp-buffer
+    (insert "2020-01-01 00:00:00 [thread 1] INFO hello - world\n")
+    (logview-mode)
+    (should (eq major-mode 'logview-mode))))
+
+
+(ert-deftest logview-mode-unsuccessful-setup ()
+  (condition-case nil
+      (logview--advised (#'logview--set-up :override (lambda () (signal 'logview-test-expected-error nil)))
+        (with-temp-buffer
+          (logview-mode)
+          ;; Errors during mode setup must not leave the mode half-initialized.
+          (should (eq major-mode 'fundamental-mode))))
+    (logview-test-expected-error)))
+
 
 (defmacro logview--test-with-file (filename &rest body)
   "Activate Logview in a temporary buffer with contents of the file.
@@ -86,13 +121,12 @@ buffer if the test needs that."
     `(let (,@erase-customizations
            ,@extra-customizations
            (inhibit-message t))
-       (advice-add 'display-warning :override #'logview--test-display-warning-advice)
-       (unwind-protect
-           (with-temp-buffer
-             (insert-file-contents (expand-file-name ,filename logview--test-directory))
-             (,(or buffer-mode 'logview-mode))
-             ,@body)
-         (advice-remove 'display-warning #'logview--test-display-warning-advice)))))
+       (logview--advised ('display-warning :override (lambda (&rest arguments)
+                                                       (error "Warning elevated to an error: %S" arguments)))
+         (with-temp-buffer
+           (insert-file-contents (expand-file-name ,filename logview--test-directory))
+           (,(or buffer-mode 'logview-mode))
+           ,@body)))))
 
 
 (defun logview--test-user-visible-buffer-string ()
