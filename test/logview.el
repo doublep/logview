@@ -83,7 +83,6 @@
     (logview-mode)
     (should (eq major-mode 'logview-mode))))
 
-
 (ert-deftest logview-mode-unsuccessful-setup ()
   (condition-case nil
       (logview--advised (#'logview--set-up :override (lambda () (signal 'logview-test-expected-error nil)))
@@ -108,10 +107,12 @@ buffer if the test needs that."
   ;; this case to begin with.
   (let (erase-customizations
         extra-customizations
+        warning-handling
         buffer-mode)
     (while (keywordp (car body))
       (pcase-exhaustive (pop body)
         (:extra-customizations (setf extra-customizations (eval (pop body) t)))
+        (:warning-handling     (setf warning-handling     (pop body)))
         (:buffer-mode          (setf buffer-mode          (pop body)))))
     (dolist (customizable (custom-group-members 'logview nil))
       ;; Byte-compiled `let' with double-binding for the same variable behaves differently
@@ -121,11 +122,15 @@ buffer if the test needs that."
     `(let (,@erase-customizations
            ,@extra-customizations
            (inhibit-message t))
-       (logview--advised ('display-warning :override (lambda (&rest arguments)
-                                                       (error "Warning elevated to an error: %S" arguments)))
+       (logview--advised ('display-warning :around (lambda (original &rest arguments)
+                                                     (pcase ',warning-handling
+                                                       (`suppress)
+                                                       (`standard (apply original arguments))
+                                                       (_         (error "Warning elevated to an error: %S" arguments)))))
          (with-temp-buffer
            (insert-file-contents (expand-file-name ,filename logview--test-directory))
            (,(or buffer-mode 'logview-mode))
+           (should (eq major-mode ',(or buffer-mode 'logview-mode)))
            ,@body)))))
 
 
@@ -171,6 +176,28 @@ buffer if the test needs that."
     `((logview--views             '(,@views))
       (logview--views-initialized t)
       (logview--views-need-saving nil))))
+
+
+(ert-deftest logview-mode-no-timestamp-parser ()
+  (logview--advised ('datetime-parser-to-float :override (lambda (&rest _) (error "Pretending it doesn't work")))
+    (logview--test-with-file "log4j/en-1.log"
+      :warning-handling suppress
+      (should logview--submode-timestamp-parser)
+      (should (equal logview--submode-name "SLF4J"))
+      (logview--locate-current-entry entry start
+        ;; Asserting the current behavior for the case `datetime' doesn't work.
+        (should (equal (logview--entry-timestamp entry start) 0.0))))))
+
+(ert-deftest logview-mode-forced-utc-timestamp-parser ()
+  (logview--advised ('datetime--determine-system-timezone :override (lambda (&rest _) (error "Pretending it doesn't work")))
+    (logview--test-with-file "log4j/en-1.log"
+      :warning-handling suppress
+      (should logview--submode-timestamp-parser)
+      (should (equal logview--submode-name "SLF4J"))
+      (logview--locate-current-entry entry start
+        ;; Asserting the current behavior for the case `datetime' cannot determine system
+        ;; timezone.  The value below is expected parsing is when the timestamp in UTC.
+        (should (= (round (logview--entry-timestamp entry start)) 1268251424))))))
 
 
 (ert-deftest logview-log4j-standard-1 ()

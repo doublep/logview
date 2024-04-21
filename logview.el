@@ -2899,7 +2899,7 @@ returns non-nil."
                                                    (condition-case error
                                                        (when (logview--initialize-submode name definition standard-timestamps line)
                                                          (setf promising t))
-                                                     (error (warn (error-message-string error)))))
+                                                     (error (warn "%s" (error-message-string error)))))
                                                  logview-additional-submodes logview-std-submodes))
                 (when promising
                   (setf remaining-attemps (1- remaining-attemps))))
@@ -3047,11 +3047,23 @@ returns non-nil."
                   (aset logview--submode-level-faces (cadr level-data) (cddr level-data)))
                 (when (memq 'timestamp features)
                   (let ((num-fractionals (apply #'datetime-pattern-num-second-fractionals 'java (cdr timestamp-pattern) logview--datetime-parsing-options)))
-                    (setq logview--submode-timestamp-parser           (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern)
-                                                                             :locale timestamp-locale :timezone 'system
-                                                                             logview--datetime-parsing-options)
-                          logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
-                          logview--timestamp-gap-format-string        (format "%%.%df" num-fractionals))))
+                    (setf logview--timestamp-difference-format-string (format "%%+.%df" num-fractionals)
+                          logview--timestamp-gap-format-string        (format "%%.%df" num-fractionals)))
+                  ;; Largely for catching errors in `datetime's determination of system timezone.
+                  (setf logview--submode-timestamp-parser
+                        (condition-case error
+                            (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern) :locale timestamp-locale :timezone 'system
+                                   logview--datetime-parsing-options)
+                          (error (warn "%s" (error-message-string error))
+                                 (let ((utc-parser (ignore-errors (apply #'datetime-parser-to-float 'java (cdr timestamp-pattern) :locale timestamp-locale
+                                                                         logview--datetime-parsing-options))))
+                                   (if utc-parser
+                                       (progn (warn "Using UTC for the log file instead, in hopes it will be good enough")
+                                              utc-parser)
+                                     ;; Only to avoid errors later.  Results will be incorrect, of course, but
+                                     ;; at least the mode everything other than some timestamp-related
+                                     ;; commands will work.  The cause is reported as a warning above.
+                                     (lambda (_) 0.0)))))))
                 (read-only-mode 1)
                 (when buffer-file-name
                   (pcase logview-auto-revert-mode
