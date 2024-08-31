@@ -3886,12 +3886,12 @@ This list is preserved across Emacs session in
       ;; properties (e.g. faces) everywhere in the fontified region and that's normally
       ;; enough.
       (font-lock-unfontify-region region-start region-end)
-      (if logview--postpone-fontification
-          (progn (add-face-text-property region-start region-end 'logview-unprocessed)
-                 (unless logview--pending-refontifications
-                   (run-with-idle-timer 0 nil #'logview--schedule-pending-refontification))
-                 (push (list (current-buffer) region-start region-end) logview--pending-refontifications))
-        (logview--std-altering
+      (logview--std-altering
+        (if logview--postpone-fontification
+            (progn (add-face-text-property region-start region-end 'logview-unprocessed)
+                   (unless logview--pending-refontifications
+                     (run-with-idle-timer 0 nil #'logview--schedule-pending-refontification))
+                   (push (list (current-buffer) region-start region-end) logview--pending-refontifications))
           (save-match-data
             (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
               (when region-start
