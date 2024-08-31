@@ -706,6 +706,7 @@ ENTRY will have its timestamp parsed.")
 (defvar-local logview--timestamp-difference-per-thread-bases nil
   "Either nil or a hash-table of strings to cons cells.
 See `logview--timestamp-difference-base' for details.")
+(defvar-local logview--timestamp-difference-to-section-headers nil)
 
 (defvar-local logview--buffer-target-gap-length nil)
 (defvar-local logview--last-found-large-gap     nil)
@@ -877,9 +878,11 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
     ("Display timestamp differences"
      (logview-difference-to-current-entry                                    "Show difference to the current entry for all other entries")
      (logview-thread-difference-to-current-entry                             "Show difference only for the entries of the same thread")
+     (logview-difference-to-section-headers                                  "Show timestamp differences within each section")
      (logview-go-to-difference-base-entry                                    "Go to the entry difference to which timestamp is shown")
      (logview-forget-difference-base-entries                                 "Don’t show timestamp differences")
-     (logview-forget-thread-difference-base-entry                            "Don’t show timestamp differences for this thread"))
+     (logview-forget-thread-difference-base-entry                            "Don’t show timestamp differences for this thread")
+     (logview-cancel-difference-to-section-headers                           "Don’t show timestamp differences to section headers"))
     ("Change options for current buffer"
      (logview-change-target-gap-length                                       "Set gap length for ‘\\[logview-next-timestamp-gap]’ and similar commands")
      (auto-revert-mode                                                       "Toggle Auto-Revert mode")
@@ -1161,9 +1164,11 @@ that the line is not the first in the buffer."
                        ;; Entry timestamp commands.
                        ("z a" logview-difference-to-current-entry)
                        ("z t" logview-thread-difference-to-current-entry)
+                       ("z c" logview-difference-to-section-headers)
                        ("z z" logview-go-to-difference-base-entry)
                        ("z A" logview-forget-difference-base-entries)
                        ("z T" logview-forget-thread-difference-base-entry)
+                       ("z C" logview-cancel-difference-to-section-headers)
                        ("z n" logview-next-timestamp-gap)
                        ("z p" logview-previous-timestamp-gap)
                        ("z N" logview-next-timestamp-gap-in-this-thread)
@@ -2133,18 +2138,21 @@ If invoked with prefix argument, make sections thread-bound if
 the argument is positive, non-bound otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--assert 'thread)
-  (logview--toggle-option-locally 'logview--sections-thread-bound arg (called-interactively-p 'interactive)
-                                  "Sections are now thread-bound and can overlap"
-                                  "Sections are not thread-bound anymore and are always sequential"))
+  (when (and (logview--toggle-option-locally 'logview--sections-thread-bound arg (called-interactively-p 'interactive)
+                                             "Sections are now thread-bound and can overlap"
+                                             "Sections are not thread-bound anymore and are always sequential")
+             logview--timestamp-difference-to-section-headers)
+    (logview--refontify-buffer)))
 
 (defun logview-sections-thread-bound-p ()
   (and logview--sections-thread-bound (memq 'thread logview--submode-features)))
 
 (defun logview--ensure-section-view (set-view-if-needed)
-  (when set-view-if-needed
-    (unless (logview--find-view logview--section-view-name t)
-      (logview--do-set-section-view (logview--choose-view (substitute-command-keys
-                                                           "View that defines sections (change with `\\[logview-set-section-view]'): "))))))
+  (unless (logview--find-view logview--section-view-name t)
+    (if set-view-if-needed
+        (logview--do-set-section-view (logview--choose-view (substitute-command-keys
+                                                             "View that defines sections (change with `\\[logview-set-section-view]'): ")))
+      (error "There is no active section view"))))
 
 (defun logview--do-forward-section-as-command (set-view-if-needed n &optional go-to-end)
   (logview--assert)
@@ -2402,7 +2410,8 @@ which haven't been manually hidden are visible."
 (defun logview-difference-to-current-entry ()
   "Display difference to current entry's timestamp.
 Difference is shown for all other entries.  Any thread-specific
-difference bases (appointed with `\\<logview-mode-map>\\[logview-thread-difference-to-current-entry]') are removed."
+difference bases (appointed with `\\<logview-mode-map>\\[logview-thread-difference-to-current-entry]') are removed and displaying
+of differences to section headers (see `\\<logview-mode-map>\\[logview-difference-to-section-headers]') is canceled."
   (interactive)
   (logview--assert 'timestamp)
   (logview--std-temporarily-widening
@@ -2410,15 +2419,20 @@ difference bases (appointed with `\\<logview-mode-map>\\[logview-thread-differen
       ;; Make sure that it is parsed.
       (logview--entry-timestamp entry start)
       (let ((base (cons entry start)))
-        (unless (and (equal logview--timestamp-difference-base base) (null logview--timestamp-difference-per-thread-bases))
-          (setq logview--timestamp-difference-base             base
-                logview--timestamp-difference-per-thread-bases nil)
+        (unless (and (equal logview--timestamp-difference-base base)
+                     (null logview--timestamp-difference-per-thread-bases)
+                     (not logview--timestamp-difference-to-section-headers))
+          (setf logview--timestamp-difference-base               base
+                logview--timestamp-difference-per-thread-bases   nil
+                logview--timestamp-difference-to-section-headers nil)
           (logview--refontify-buffer))))))
 
 (defun logview-thread-difference-to-current-entry ()
   "Display difference to current entry's timestamp in its thread.
 In case there is a global difference base (appointed with `\\<logview-mode-map>\\[logview-difference-to-current-entry]'),
-it stays in effect for other threads."
+it stays in effect for other threads.  Similarly, activated display
+of differences to section headers (see `\\<logview-mode-map>\\[logview-difference-to-section-headers]') continues for other
+threads."
   (interactive)
   (logview--assert 'timestamp 'thread)
   (logview--std-temporarily-widening
@@ -2427,11 +2441,28 @@ it stays in effect for other threads."
       (logview--entry-timestamp entry start)
       (let ((base   (cons entry start))
             (thread (logview--entry-group entry start logview--thread-group)))
-        (unless (and logview--timestamp-difference-per-thread-bases (equal (gethash thread logview--timestamp-difference-per-thread-bases) base))
+        (unless (and logview--timestamp-difference-per-thread-bases
+                     (equal (gethash thread logview--timestamp-difference-per-thread-bases) base))
           (unless logview--timestamp-difference-per-thread-bases
             (setq logview--timestamp-difference-per-thread-bases (make-hash-table :test #'equal)))
           (puthash thread base logview--timestamp-difference-per-thread-bases)
           (logview--refontify-buffer))))))
+
+(defun logview-difference-to-section-headers (&optional set-view-if-needed)
+  "Display difference to section header timestamp everywhere.
+All global (see `\\<logview-mode-map>\\[logview-difference-to-current-entry]') and thread-specific difference bases (`\\<logview-mode-map>\\[logview-thread-difference-to-current-entry]')
+are removed."
+  (interactive "p")
+  (logview--assert 'timestamp)
+  (logview--ensure-section-view set-view-if-needed)
+  (logview--std-temporarily-widening
+    (unless (and (null logview--timestamp-difference-base)
+                 (null logview--timestamp-difference-per-thread-bases)
+                 logview--timestamp-difference-to-section-headers)
+          (setf logview--timestamp-difference-base               nil
+                logview--timestamp-difference-per-thread-bases   nil
+                logview--timestamp-difference-to-section-headers t)
+          (logview--refontify-buffer))))
 
 (defun logview-go-to-difference-base-entry ()
   (interactive)
@@ -2442,11 +2473,17 @@ it stays in effect for other threads."
                                 (logview--entry-group entry start logview--thread-group)))
              (difference-base (or (when logview--timestamp-difference-per-thread-bases
                                     (gethash thread logview--timestamp-difference-per-thread-bases))
-                                  logview--timestamp-difference-base)))
+                                  (if logview--timestamp-difference-to-section-headers
+                                      (save-excursion
+                                        (logview--forward-section 0)
+                                        (logview--locate-current-entry entry start
+                                          (when (funcall (cdr logview--section-header-filter) entry start)
+                                            `(,entry . ,start))))
+                                    logview--timestamp-difference-base))))
         (unless difference-base
           (user-error "There is no timestamp difference base for the current entry"))
         (when (invisible-p (cdr difference-base))
-          (user-error "Timestamp difference base is either hidden or not in the current file contents anymore (e.g. due to log rolling)"))
+          (user-error "Timestamp difference base is either hidden or not in the current file contents anymore (e.g. due to log rotation)"))
         (let ((entry (car difference-base))
               (start (cdr difference-base)))
           (unless (and (< start (logview--point-max)) (> (logview--entry-end entry start) (logview--point-min)))
@@ -2455,14 +2492,23 @@ it stays in effect for other threads."
           (logview--maybe-pulse-current-entry 'movement))))))
 
 (defun logview-forget-difference-base-entries ()
+  "Don't replace entry timestamps with differences anywhere.
+This cancels effects of commands `\\<logview-mode-map>\\[logview-difference-to-current-entry]', `\\<logview-mode-map>\\[logview-thread-difference-to-current-entry]' and `\\<logview-mode-map>\\[logview-difference-to-section-headers]'."
   (interactive)
   (logview--assert 'timestamp)
-  (unless (and (null logview--timestamp-difference-base) (null logview--timestamp-difference-per-thread-bases))
-    (setq logview--timestamp-difference-base             nil
-          logview--timestamp-difference-per-thread-bases nil)
+  (unless (and (null logview--timestamp-difference-base)
+               (null logview--timestamp-difference-per-thread-bases)
+               (not  logview--timestamp-difference-to-section-headers))
+    (setf logview--timestamp-difference-base               nil
+          logview--timestamp-difference-per-thread-bases   nil
+          logview--timestamp-difference-to-section-headers nil)
     (logview--refontify-buffer)))
 
 (defun logview-forget-thread-difference-base-entry ()
+  "Don't replace entry timestamps with differences in this thread.
+However, if there is a global replacement in effect (i.e. not
+specific to this thread: see commands `\\<logview-mode-map>\\[logview-difference-to-current-entry]' and `\\<logview-mode-map>\\[logview-difference-to-section-headers]'), it will
+get activated instead."
   (interactive)
   (logview--assert 'timestamp 'thread)
   (logview--std-temporarily-widening
@@ -2474,6 +2520,17 @@ it stays in effect for other threads."
           (user-error "There is no thread-specific timestamp difference base for thread `%s'" thread))
         (remhash thread logview--timestamp-difference-per-thread-bases)
         (logview--refontify-buffer)))))
+
+(defun logview-cancel-difference-to-section-headers ()
+  "Don't replace entry timestamps with differences to section headers.
+If section headers are not used as timestamp bases (see command `\\<logview-mode-map>\\[logview-difference-to-section-headers]'),
+this command doesn't do anything."
+  (interactive)
+  (logview--assert 'timestamp)
+  (if logview--timestamp-difference-to-section-headers
+      (progn (setf logview--timestamp-difference-to-section-headers nil)
+             (logview--refontify-buffer))
+    (user-error "Not showing timestamp differences to section headers, nothing to cancel")))
 
 
 
@@ -2684,12 +2741,14 @@ These are:
                                      "*Customize Logview Submodes*"))
 
 (defun logview--toggle-option-locally (variable arg &optional show-message message-if-true message-if-false)
-  (set (make-local-variable variable)
-       (if (eq arg 'toggle)
-           (not (symbol-value variable))
-         (> (prefix-numeric-value arg) 0)))
-  (when show-message
-    (message (if (symbol-value variable) message-if-true message-if-false))))
+  (let ((new-value (if (eq arg 'toggle)
+                       (not (symbol-value variable))
+                     (> (prefix-numeric-value arg) 0))))
+    (unless (eq new-value (symbol-value variable))
+      (set (make-local-variable variable) new-value)
+      (when show-message
+        (message (if (symbol-value variable) message-if-true message-if-false)))
+      t)))
 
 
 
@@ -3895,25 +3954,29 @@ This list is preserved across Emacs session in
           (save-match-data
             (let ((region-start (cdr (logview--do-locate-current-entry region-start))))
               (when region-start
-                (let* ((have-timestamp              (memq 'timestamp logview--submode-features))
-                       (have-level                  (memq 'level     logview--submode-features))
-                       (have-name                   (memq 'name      logview--submode-features))
-                       (have-thread                 (memq 'thread    logview--submode-features))
-                       (validator                   (cdr logview--effective-filter))
-                       (common-difference-base      logview--timestamp-difference-base)
-                       (difference-bases-per-thread logview--timestamp-difference-per-thread-bases)
-                       (displaying-differences      (or common-difference-base difference-bases-per-thread))
-                       (difference-format-string    logview--timestamp-difference-format-string)
-                       (header-filter               (cdr logview--section-header-filter))
-                       (highlighter                 (cdr logview--highlighted-filter))
-                       (highlighted-part            logview-highlighted-entry-part))
+                (let* ((have-timestamp                (memq 'timestamp logview--submode-features))
+                       (have-level                    (memq 'level     logview--submode-features))
+                       (have-name                     (memq 'name      logview--submode-features))
+                       (have-thread                   (memq 'thread    logview--submode-features))
+                       (validator                     (cdr logview--effective-filter))
+                       (difference-to-section-headers logview--timestamp-difference-to-section-headers)
+                       (sections-thread-bound         (when difference-to-section-headers (logview-sections-thread-bound-p)))
+                       (common-difference-base        (or logview--timestamp-difference-base
+                                                          (when (and difference-to-section-headers (not sections-thread-bound)) :unknown)))
+                       (difference-bases-per-thread   (or logview--timestamp-difference-per-thread-bases
+                                                          (when (and difference-to-section-headers sections-thread-bound)       (make-hash-table :test #'equal))))
+                       (displaying-differences        (or common-difference-base difference-bases-per-thread))
+                       (difference-format-string      logview--timestamp-difference-format-string)
+                       (header-filter                 (cdr logview--section-header-filter))
+                       (highlighter                   (cdr logview--highlighted-filter))
+                       (highlighted-part              logview-highlighted-entry-part))
                   (logview--iterate-entries-forward
                    region-start
                    (lambda (entry start)
                      (let ((end (logview--entry-end entry start))
                            filtered)
                        (if (or (null validator) (funcall validator entry start))
-                           (progn
+                           (let ((header-entry (and header-filter (funcall header-filter entry start))))
                              (when have-level
                                (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
                                  (put-text-property start end 'face (car entry-faces))
@@ -3921,14 +3984,32 @@ This list is preserved across Emacs session in
                                                          (logview--entry-group-end   entry start logview--level-group)
                                                          (cdr entry-faces))))
                              (when have-timestamp
-                               (let ((from (logview--entry-group-start entry start logview--timestamp-group))
-                                     (to   (logview--entry-group-end   entry start logview--timestamp-group))
+                               (let ((from   (logview--entry-group-start entry start logview--timestamp-group))
+                                     (to     (logview--entry-group-end   entry start logview--timestamp-group))
+                                     (thread (when difference-bases-per-thread (logview--entry-group entry start logview--thread-group)))
                                      timestamp-replaced)
                                  (add-face-text-property from to 'logview-timestamp)
                                  (when displaying-differences
+                                   (when (and header-entry difference-to-section-headers)
+                                     (let ((base `(,entry . ,start)))
+                                       (if difference-bases-per-thread
+                                           (puthash thread base difference-bases-per-thread)
+                                         (setf common-difference-base base))))
                                    (let ((difference-base (or (when difference-bases-per-thread
-                                                                (gethash (logview--entry-group entry start logview--thread-group) difference-bases-per-thread))
+                                                                (gethash thread difference-bases-per-thread (when difference-bases-per-thread :unknown)))
                                                               common-difference-base)))
+                                     ;; This is possible only when displaying differences to section header.
+                                     ;; Means that we don't yet know where the header is.
+                                     (when (eq difference-base :unknown)
+                                       ;; FIXME: Might need to improve performance here, e.g. using cache.
+                                       (save-excursion
+                                         (goto-char start)
+                                         (logview--forward-section 0)
+                                         (logview--locate-current-entry entry start
+                                           (setf difference-base (when (funcall (cdr logview--section-header-filter) entry start) `(,entry . ,start)))
+                                           (if difference-bases-per-thread
+                                               (puthash thread difference-base difference-bases-per-thread)
+                                             (setf common-difference-base difference-base)))))
                                      ;; Hide timestamp with time difference if there is a difference
                                      ;; base entry and we are not positioned over it right now.
                                      (when (and difference-base (not (and (= (cdr difference-base) start)
@@ -3957,7 +4038,7 @@ This list is preserved across Emacs session in
                                (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
                                                        (logview--entry-group-end   entry start logview--thread-group)
                                                        'logview-thread))
-                             (when (and header-filter (funcall header-filter entry start))
+                             (when header-entry
                                (add-face-text-property start end 'logview-section))
                              (when (and highlighter (funcall highlighter entry start))
                                (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)

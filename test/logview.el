@@ -691,6 +691,37 @@ buffer if the test needs that."
                 (logview--subtest t (logview-last-section-any-thread)
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))))))))))
 
+(ert-deftest logview-difference-to-section-headers ()
+  (logview--test-with-file "log4j/sections-1.log"
+    :extra-customizations (logview--test-view-customizations '(:name "sections" :filters "lv INFO\na+ my\\.Server\nm+ serving request"))
+    (logview-set-section-view "sections")
+    (logview-difference-to-section-headers)
+    ;; Entries before any sections, timestamps must not be replaced.
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.000 [thread 1] DEBUG my.Startup - starting up" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.100 [thread 1] DEBUG my.Class - before any sections" eol)
+                            (logview--test-user-visible-buffer-string)))
+    ;; Section headers, timestamps must not be replaced.
+    (should (string-match-p (rx bol "2010-03-10 20:03:45.000 [thread 1] INFO my.Server - serving request 1" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "2010-03-10 20:03:46.100 [thread 2] INFO my.Server - serving request 3 (in a different thread)" eol)
+                            (logview--test-user-visible-buffer-string)))
+    ;; Entries withing sections, timestamps must be shown as difference to the corresponding section start.
+    (should (string-match-p (rx bol "                 +0.100 [thread 1] DEBUG my.Class - inside section 1" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "                 +0.300 [thread 1] DEBUG my.Class - inside section 2" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "                 +0.300 [thread 2] DEBUG my.Class - doing stuff (section 3)" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "                 +0.400 [thread 2] DEBUG my.Class - doing more stuff (section 4)" eol)
+                            (logview--test-user-visible-buffer-string)))
+    ;; This must cause immediate difference rebuilding.
+    (logview-toggle-sections-thread-bound 0)
+    ;; This entry must be seen as belonging to a different section now ("serving request 3
+    ;; (in a different thread)").
+    (should (string-match-p (rx bol "                 +0.200 [thread 1] DEBUG my.Class - inside section 2" eol)
+                            (logview--test-user-visible-buffer-string)))))
+
 
 (ert-deftest logview-view-editing-1 ()
   (logview--test-with-file "log4j/en-1.log"
