@@ -2874,15 +2874,28 @@ modified.
 
 This can be seen as an alternative to `auto-revert-mode': instead
 of automatic reverting you ask for it explicitly.  It should be
-as simple as typing `\\<logview-mode-map>\\[logview-revert-buffer]', as no confirmations are asked."
+as simple as typing `\\<logview-mode-map>\\[logview-revert-buffer]', as no confirmations are asked.
+
+If the buffer is narrowed and its contents got changed in the
+beginning (see `logview-reassurance-chars'), for example due to
+log rotation, this function also widens it.  Narrowing
+restrictions most likely wouldn't make any sense with new text."
   (interactive)
-  (let ((revert-without-query (when buffer-file-name (list (regexp-quote buffer-file-name))))
-        (was-read-only        buffer-read-only))
+  (let* ((narrowed             (buffer-narrowed-p))
+         (reassurance-chars    (max logview-reassurance-chars 1))
+         (first-characters     (when narrowed (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars)))))
+         (revert-without-query (when buffer-file-name (list (regexp-quote buffer-file-name))))
+         (was-read-only        buffer-read-only))
     (revert-buffer nil nil t)
     ;; Apparently 'revert-buffer' resets this.
-    (read-only-mode (if was-read-only 1 0)))
-  ;; If reverting fails we just won't even get here.
-  (message "Reverted the buffer"))
+    (read-only-mode (if was-read-only 1 0))
+    (if narrowed
+        (let ((same-contents (string= (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars))) first-characters)))
+          (if same-contents
+              (message "Reverted the buffer; kept the narrowing as the start contents is the same")
+            (logview-widen)
+            (message "Reverted the buffer; widened it as narrowing is likely obsolete with new contents")))
+      (message "Reverted the buffer"))))
 
 (defun logview--do-append-log-file-tail (&optional no-errors)
   "Perform the work of `logview-append-log-file-tail'.
