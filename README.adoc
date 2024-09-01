@@ -344,6 +344,12 @@ entries in different threads always belong to different sections.
 This actually reflects how threaded programs (that create logs with
 different threads) work, so shouldn’t be seen as unexpected.
 
+Sections work particularly nicely in combination with timestamp
+difference commands.  Using command `z c` you can order Logview to
+replace timestamps for all non-header entries with the difference to
+the timestamp in the corresponding section’s header.  This is useful
+when investigating logs for sources of performance problems.
+
 
 == Commands
 
@@ -478,11 +484,14 @@ active.
 * Replace timestamps with their difference to that of the current
   entry: `z a`.
 * Same as above, but only within the same thread: `z t`
+* Same as above, but within _every_ section relative to its header: `z c`
 * Go to the entry difference to which timestamp is shown: `z z`
 * Don’t show timestamp differences: `z A`
 * Don’t show timestamp differences for this thread: `z T`
+* Don’t show timestamp differences in every section: `z C`
 
-Timestamp differences are displayed in seconds.
+Timestamp differences are displayed in seconds.  See also
+<<sections-explained,description of sections above>>.
 
 === Explicitly hide or show details of individual entries
 
@@ -517,9 +526,16 @@ changed in each individual buffer.
 * Customize options that affect submode selection: `o S` or `C-c C-s`
 * Bury buffer: `q`
 * Refresh the buffer (appending, if possible) preserving active filters: `g`
+* Prepare the buffer for new contents: `G`
 * Append log file tail to the buffer: `x`
 * Revert the buffer preserving active filters: `X`
 * Universal prefix commands are bound without modifiers: `u`, `-`, `0`..`9`
+
+Preparing for new contents (`G`) is useful in situations where you
+want to abstract from existing entries.  Next time you issue command
+`g` after it, the buffer will contain all entries added between `G`
+and `g`.  `G` is roughly equivalent to the following sequence of
+commands: `g`, `w`, `>`, `[`.
 
 
 [#locked-narrowing]
