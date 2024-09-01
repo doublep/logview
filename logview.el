@@ -898,6 +898,7 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-customize-submode-options                                      "Customize options that affect submode selection")
      (bury-buffer                                                            "Bury buffer")
      (logview-refresh-buffer-as-needed                                       "Append tail or revert the buffer, as needed")
+     (logview-prepare-for-new-contents                                       "Prepare the buffer to inspect only newly added contents")
      (logview-append-log-file-tail                                           "Append log file tail to the buffer")
      (logview-revert-buffer                                                  "Revert the buffer preserving active filters")
      "Universal prefix commands are bound without modifiers: \\[universal-argument], \\[negative-argument], \\[digit-argument <0>]..\\[digit-argument <9>].")))
@@ -1191,6 +1192,7 @@ that the line is not the first in the buffer."
                        ("SPC" logview-pulse-current-entry)
                        ("?"   logview-mode-help)
                        ("g"   logview-refresh-buffer-as-needed)
+                       ("G"   logview-prepare-for-new-contents)
                        ("x"   logview-append-log-file-tail)
                        ("X"   logview-revert-buffer)
                        ("q"   bury-buffer)
@@ -1386,24 +1388,30 @@ command `\\<logview-mode-map>\\[logview-set-navigation-view]' to change that lat
   (interactive "p\np")
   (logview-next-navigation-view-entry (if n (- n) -1) set-view-if-needed))
 
-(defun logview-first-entry ()
+(defun logview-first-entry (&optional no-mark)
   "Move point to the first log entry.
 Point is positioned at the beginning of the message of the entry.
-Otherwise this function is similar to `beginning-of-buffer'."
-  (interactive)
-  (logview--do-relocate #'logview--point-min))
+Otherwise this function is similar to `beginning-of-buffer'.
 
-(defun logview-last-entry ()
+Unless issued with a prefix argument or the mark is active, push
+mark at the current position."
+  (interactive "P")
+  (logview--do-relocate #'logview--point-min no-mark))
+
+(defun logview-last-entry (&optional no-mark)
   "Move point to the last log entry.
 Point is positioned at the beginning of the message of the entry.
 If the last entry is multiline, this makes the function quite
-different from `end-of-buffer'."
-  (interactive)
-  (logview--do-relocate #'logview--point-max))
+different from `end-of-buffer'.
 
-(defun logview--do-relocate (where-provider)
+Unless issued with a prefix argument or the mark is active, push
+mark at the current position."
+  (interactive "P")
+  (logview--do-relocate #'logview--point-max no-mark))
+
+(defun logview--do-relocate (where-provider &optional no-mark)
   (logview--assert)
-  (unless (region-active-p)
+  (unless (or no-mark (region-active-p))
     (push-mark))
   (logview--std-temporarily-widening
     (goto-char (funcall where-provider))
@@ -2846,6 +2854,23 @@ In all cases the current filters are preserved."
   (interactive)
   (unless (and (not (buffer-modified-p)) (logview--do-append-log-file-tail t))
     (logview-revert-buffer)))
+
+(defun logview-prepare-for-new-contents ()
+  "Prepare the log buffer for new contents, ignoring existing one.
+This refreshes buffer as needed, widens it, goes to the last
+entry and then narrows so that all already existing entries are
+hidden.  The result is a buffer that appears empty (only one
+entry is shown for context) and will be filled with new contents
+once you issue command `\\<logview-mode-map>\\[logview-refresh-buffer-as-needed]'.
+
+This seemingly weird sequence of commands is very useful when you
+want to concentrate on log contents between issuing the command
+and until `\\<logview-mode-map>\\[logview-refresh-buffer-as-needed]'."
+  (interactive)
+  (logview-refresh-buffer-as-needed)
+  (logview-widen)
+  (logview-last-entry t)
+  (logview-narrow-from-this-entry))
 
 (defun logview-append-log-file-tail ()
   "Load log file tail into the buffer preserving active filters.
