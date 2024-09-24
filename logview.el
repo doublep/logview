@@ -1248,6 +1248,8 @@ successfully.")
   (add-hook 'after-change-functions #'logview--invalidate-region-entries nil t)
   (add-hook 'change-major-mode-hook #'logview--exiting-mode nil t)
   (add-hook 'pre-command-hook #'logview--pre-command nil t)
+  (add-hook 'isearch-mode-hook #'logview--starting-isearch nil t)
+  (add-hook 'isearch-mode-end-hook #'logview--ending-isearch nil t)
   (logview--guess-submode)
   (logview--update-invisibility-spec)
   (unless (logview-initialized-p)
@@ -2667,7 +2669,8 @@ argument is positive, disable it otherwise."
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--toggle-option-locally 'logview-search-only-in-messages arg (called-interactively-p 'interactive)
                                   "Incremental search will find matches only in messages"
-                                  "Incremental search will behave normally"))
+                                  "Incremental search will behave normally")
+  (logview--isearch-update-if-running))
 
 (defun logview-toggle-filter-preview (&optional arg)
   "Toggle `logview-preview-filter-changes' just for this buffer.
@@ -2755,7 +2758,12 @@ These are:
     (unless (eq new-value (symbol-value variable))
       (set (make-local-variable variable) new-value)
       (when show-message
-        (message (if (symbol-value variable) message-if-true message-if-false)))
+        (let ((message (if (symbol-value variable) message-if-true message-if-false)))
+          (if (and isearch-mode
+                   ;; Private function, as always.  At least don't die if they rename it.
+                   (fboundp 'isearch--momentary-message))
+              (isearch--momentary-message message)
+            (message message))))
       t)))
 
 
@@ -4184,6 +4192,46 @@ This list is preserved across Emacs session in
 ;; Exists for potential future expansion.
 (defun logview--kill-emacs-hook ()
   (logview--save-views-if-needed))
+
+
+
+;;; Advanced integration with isearch.
+
+(defvar logview-isearch-map
+  (let ((map (make-sparse-keymap)))
+    (dolist (binding '(("M-m" logview-toggle-search-only-in-messages)))
+      (define-key map (kbd (car binding)) (cadr binding)))
+    map)
+  "Keymap used when isearching in a Logview buffer.")
+
+(defvar logview--isearch-mode-map-original-parent t)
+
+;; According to own source code of Emacs, this snot-glued hack is the standard way of
+;; altering isearch behavior, i.e. with hooks.  Oh well.  A lot of code also modifies
+;; `isearch-map' bindings directly, but this feels very dirty: e.g. what if this conflicts
+;; with a user's private binding?
+(defun logview--starting-isearch ()
+  (let ((parent (keymap-parent isearch-mode-map)))
+    ;; Need to make commands findable in `isearch-mode-map' (via its parent), else isearch
+    ;; will abort on any of our extension commands.
+    (set-keymap-parent isearch-mode-map (if parent
+                                            (make-composed-keymap logview-isearch-map parent)
+                                          logview-isearch-map))
+    (setf logview--isearch-mode-map-original-parent parent)))
+
+(defun logview--ending-isearch ()
+  (unless (eq logview--isearch-mode-map-original-parent t)
+    (set-keymap-parent isearch-mode-map logview--isearch-mode-map-original-parent)
+    (setf logview--isearch-mode-map-original-parent t)))
+
+(defun logview--isearch-update-if-running ()
+  (when isearch-mode
+    ;; This is what `isearch-define-mode-toggle' does.  Let's assume it's needed.
+    (setf isearch-success  t
+          isearch-adjusted 'toggle)
+    ;; Otherwise it won't update lazy highlighting.
+    (setf isearch-lazy-highlight-last-string nil)
+    (isearch-update)))
 
 
 
