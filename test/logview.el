@@ -20,6 +20,7 @@
 (require 'ert)
 (require 'cus-edit)
 (require 'subr-x)
+(require 'with-simulated-input)
 
 
 (define-error 'logview-test-expected-error "Must be caught")
@@ -759,6 +760,23 @@ LV ERROR
   (logview-filter-edit-save)
   (should (equal logview--views `((:name "Error view" :submode ,(unless global "SLF4J") :filters "LV ERROR"))))
   (should logview--views-need-saving))
+
+
+(ert-deftest logview-search-only-in-messages ()
+  (logview--test-with-file "log4j/navigation-1.log"
+    (goto-char 1)
+    (with-simulated-input "2 RET"
+      (isearch-forward))
+    (should (and (looking-back "^2" 1) (looking-at "010-01-01")))
+    ;; Now the same with temporarily setting `logview-search-only-in-messages' via our
+    ;; extension, see `logview-isearch-map'.  Must produce a visibly different result.
+    (goto-char 1)
+    (with-simulated-input ("M-m 2 RET")
+      (isearch-forward))
+    (should (and (looking-back "message 2" 1) (looking-at "$")))
+    ;; `M-m' must not have a "lasting effect", only without the search itself, similar to
+    ;; how e.g. `M-c' inside search behaves.
+    (should-not logview-search-only-in-messages)))
 
 
 (define-derived-mode logview--test-derived-mode logview-mode

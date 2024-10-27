@@ -2681,9 +2681,10 @@ the search is ended.  This is for consistency with e.g. `M-s' or
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--toggle-option-locally 'logview-search-only-in-messages arg (called-interactively-p 'interactive)
                                   "Incremental search will find matches only in messages"
-                                  "Incremental search will behave normally")
-  (logview--refontify-buffer)
-  (logview--isearch-update-if-running))
+                                  "Incremental search will behave normally"
+                                  (lambda ()
+                                    (logview--refontify-buffer)
+                                    (logview--isearch-update-if-running))))
 
 (defun logview-toggle-filter-preview (&optional arg)
   "Toggle `logview-preview-filter-changes' just for this buffer.
@@ -2764,12 +2765,16 @@ These are:
                                        (logview-additional-timestamp-formats custom-variable))
                                      "*Customize Logview Submodes*"))
 
-(defun logview--toggle-option-locally (variable arg &optional show-message message-if-true message-if-false)
+(defun logview--toggle-option-locally (variable arg &optional show-message message-if-true message-if-false callback)
   (let ((new-value (if (eq arg 'toggle)
                        (not (symbol-value variable))
                      (> (prefix-numeric-value arg) 0))))
     (unless (eq new-value (symbol-value variable))
       (set (make-local-variable variable) new-value)
+      ;; The purpose of `callback' is to be invoked after updating the variable, but before showing the
+      ;; message, as e.g. `isearch--momentary-message' sucks in that it effectively freezes Emacs.
+      (when callback
+        (funcall callback))
       (when show-message
         (let ((message (if (symbol-value variable) message-if-true message-if-false)))
           (if (and isearch-mode
