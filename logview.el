@@ -609,6 +609,13 @@ Variable `logview-pulse-entries' controls in which situations
 this face is used."
   :group 'logview-faces)
 
+(defface logview-unsearchable
+  '((t :inherit shadow))
+  "Face used to “dim” unsearchable text when searching incrementally.
+Currently used only if `logview-search-only-in-messages' is
+active.  That option can be activated in multiple ways, including
+by typing `\\<logview-isearch-map>\\[logview-toggle-search-only-in-messages]' during the search.")
+
 (defface logview-unprocessed
   '((t :inherit shadow))
   "Face to highlight otherwise unfontified and unfiltered entries.
@@ -2665,11 +2672,17 @@ argument is positive, disable it otherwise."
 (defun logview-toggle-search-only-in-messages (&optional arg)
   "Toggle `logview-search-only-in-messages' just for this buffer.
 If invoked with prefix argument, enable the option if the
-argument is positive, disable it otherwise."
+argument is positive, disable it otherwise.
+
+When the option is changed when already performing an incremental
+search (with `\\<logview-isearch-map>\\[logview-toggle-search-only-in-messages]'), the change is temporary and lasts only until
+the search is ended.  This is for consistency with e.g. `M-s' or
+`M-r' during Isearch."
   (interactive (list (or current-prefix-arg 'toggle)))
   (logview--toggle-option-locally 'logview-search-only-in-messages arg (called-interactively-p 'interactive)
                                   "Incremental search will find matches only in messages"
                                   "Incremental search will behave normally")
+  (logview--refontify-buffer)
   (logview--isearch-update-if-running))
 
 (defun logview-toggle-filter-preview (&optional arg)
@@ -4015,7 +4028,8 @@ This list is preserved across Emacs session in
                        (difference-format-string      logview--timestamp-difference-format-string)
                        (header-filter                 (cdr logview--section-header-filter))
                        (highlighter                   (cdr logview--highlighted-filter))
-                       (highlighted-part              logview-highlighted-entry-part))
+                       (highlighted-part              logview-highlighted-entry-part)
+                       (dim-unsearchable              (and logview-search-only-in-messages isearch-mode)))
                   (logview--iterate-entries-forward
                    region-start
                    (lambda (entry start)
@@ -4086,6 +4100,8 @@ This list is preserved across Emacs session in
                                                        'logview-thread))
                              (when header-entry
                                (add-face-text-property start end 'logview-section))
+                             (when dim-unsearchable
+                               (add-face-text-property start (logview--entry-message-start entry start) 'logview-unsearchable))
                              (when (and highlighter (funcall highlighter entry start))
                                (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
                                                        (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
@@ -4205,12 +4221,18 @@ This list is preserved across Emacs session in
   "Keymap used when isearching in a Logview buffer.")
 
 (defvar logview--isearch-mode-map-original-parent t)
+(defvar logview--isearch-option-originals nil)
 
 ;; According to own source code of Emacs, this snot-glued hack is the standard way of
 ;; altering isearch behavior, i.e. with hooks.  Oh well.  A lot of code also modifies
 ;; `isearch-map' bindings directly, but this feels very dirty: e.g. what if this conflicts
 ;; with a user's private binding?
 (defun logview--starting-isearch ()
+  (setf logview--isearch-option-originals nil)
+  (dolist (option '(logview-search-only-in-messages))
+    (push `(,option . ,(symbol-value option)) logview--isearch-option-originals))
+  (when logview-search-only-in-messages
+    (logview--refontify-buffer))
   (let ((parent (keymap-parent isearch-mode-map)))
     ;; Need to make commands findable in `isearch-mode-map' (via its parent), else isearch
     ;; will abort on any of our extension commands.
@@ -4220,6 +4242,13 @@ This list is preserved across Emacs session in
     (setf logview--isearch-mode-map-original-parent parent)))
 
 (defun logview--ending-isearch ()
+  ;; Restore original values of certain options, for consistency with `M-c' or `M-r' during Isearch that
+  ;; affect only the current search.
+  (when logview-search-only-in-messages
+    (logview--refontify-buffer))
+  (dolist (entry logview--isearch-option-originals)
+    (set (car entry) (cdr entry)))
+  (setf logview--isearch-option-originals nil)
   (unless (eq logview--isearch-mode-map-original-parent t)
     (set-keymap-parent isearch-mode-map logview--isearch-mode-map-original-parent)
     (setf logview--isearch-mode-map-original-parent t)))
