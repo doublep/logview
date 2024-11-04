@@ -3039,7 +3039,9 @@ returns non-nil."
                                 (mapcar (lambda (name)
                                           (logview--get-split-alists name "timestamp format"
                                                                      logview-additional-timestamp-formats logview-std-timestamp-formats))
-                                        timestamp-names)
+                                        ;; Don't be too strict to the definition.  Many if not most users
+                                        ;; don't go through customization interface to create it.
+                                        (if (listp timestamp-names) timestamp-names (list timestamp-names)))
                               standard-timestamps))
          (search-from       0)
          (parts             (list "^"))

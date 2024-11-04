@@ -48,6 +48,23 @@
          (when ,fn
            (advice-remove ,symbol ,fn))))))
 
+(defmacro logview-ert-defargtest (name arguments values &rest body)
+  (declare (indent 3))
+  (let ((function (make-symbol (format "%s:impl" name))))
+    `(progn
+       ;; Implementation of `skip-unless' is copied from Emacs source.
+       (cl-macrolet ((skip-unless (form) `(ert--skip-unless ,form)))
+         ;; Apparently we cannot get away with unnamed lambdas here.
+         (defun ,function ,arguments ,@body))
+       ,@(mapcar (lambda (arg-values)
+                   `(ert-deftest ,(intern (format "%s/%s" name (logview--ert-defargtest-format-arguments arg-values))) ()
+                      (,function ,@(if (= (length arguments) 1) (list arg-values) arg-values))))
+                 values))))
+
+(defun logview--ert-defargtest-format-arguments (arguments)
+  (let ((print-quoted t))
+    (downcase (replace-regexp-in-string " " "/" (replace-regexp-in-string (rx (not (any word "-" " "))) "" (prin1-to-string arguments))))))
+
 
 (defmacro logview--test-with-restriction (start end locking-label &rest body)
   (declare (indent 3))
@@ -256,10 +273,14 @@ buffer if the test needs that."
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
 
-(ert-deftest logview-custom-submode-1 ()
+(logview-ert-defargtest logview-custom-submode-1 (definition-extra)
+                        (nil                                                                   ; timestamp format should be guessed
+                         '((timestamp . ("ISO 8601 datetime + millis")))                       ; explicitly specified timestamp format
+                         '((timestamp . "ISO 8601 datetime + millis"))                         ; timestamp format specified not as a list, should be accepted too
+                         '((timestamp . ("ISO 8601 datetime" "ISO 8601 datetime + millis"))))  ; multiple timestamp formats, one of them should match
   (logview--test-with-file "custom/1.log"
     :extra-customizations '((logview-additional-submodes
-                             '(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J")))))
+                             `(("custom" (format . "TIMESTAMP LEVEL [NAME] ") (levels . "SLF4J") ,@definition-extra))))
     (should (equal logview--submode-name "custom"))
     (logview--locate-current-entry entry start
       (should (and entry (equal start 1))))))
