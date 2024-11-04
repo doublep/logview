@@ -31,39 +31,40 @@
 
 
 ;; Copied from Eldev source code, see documentation there.
-(defmacro logview--advised (spec &rest body)
-  (declare (indent 1) (debug (sexp body)))
-  (let ((symbol   (nth 0 spec))
-        (where    (nth 1 spec))
-        (function (nth 2 spec))
-        (props    (nthcdr 3 spec))
-        (fn       (make-symbol "$fn")))
-    `(let ((,fn ,function))
-       (when ,fn
-         (if (advice-member-p ,fn ,symbol)
-             (setf ,fn nil)
-           (advice-add ,symbol ,where ,fn ,@props)))
-       (unwind-protect
-           ,(macroexp-progn body)
+(eval-when-compile
+  (defmacro logview--advised (spec &rest body)
+    (declare (indent 1) (debug (sexp body)))
+    (let ((symbol   (nth 0 spec))
+          (where    (nth 1 spec))
+          (function (nth 2 spec))
+          (props    (nthcdr 3 spec))
+          (fn       (make-symbol "$fn")))
+      `(let ((,fn ,function))
          (when ,fn
-           (advice-remove ,symbol ,fn))))))
+           (if (advice-member-p ,fn ,symbol)
+               (setf ,fn nil)
+             (advice-add ,symbol ,where ,fn ,@props)))
+         (unwind-protect
+             ,(macroexp-progn body)
+           (when ,fn
+             (advice-remove ,symbol ,fn))))))
 
-(defmacro logview-ert-defargtest (name arguments values &rest body)
-  (declare (indent 3))
-  (let ((function (make-symbol (format "%s:impl" name))))
-    `(progn
-       ;; Implementation of `skip-unless' is copied from Emacs source.
-       (cl-macrolet ((skip-unless (form) `(ert--skip-unless ,form)))
-         ;; Apparently we cannot get away with unnamed lambdas here.
-         (defun ,function ,arguments ,@body))
-       ,@(mapcar (lambda (arg-values)
-                   `(ert-deftest ,(intern (format "%s/%s" name (logview--ert-defargtest-format-arguments arg-values))) ()
-                      (,function ,@(if (= (length arguments) 1) (list arg-values) arg-values))))
-                 values))))
+  (defmacro logview-ert-defargtest (name arguments values &rest body)
+    (declare (indent 3))
+    (let ((function (make-symbol (format "%s:impl" name))))
+      `(progn
+         ;; Implementation of `skip-unless' is copied from Emacs source.
+         (cl-macrolet ((skip-unless (form) `(ert--skip-unless ,form)))
+           ;; Apparently we cannot get away with unnamed lambdas here.
+           (defun ,function ,arguments ,@body))
+         ,@(mapcar (lambda (arg-values)
+                     `(ert-deftest ,(intern (format "%s/%s" name (logview--ert-defargtest-format-arguments arg-values))) ()
+                        (,function ,@(if (= (length arguments) 1) (list arg-values) arg-values))))
+                   values))))
 
-(defun logview--ert-defargtest-format-arguments (arguments)
-  (let ((print-quoted t))
-    (downcase (replace-regexp-in-string " " "/" (replace-regexp-in-string (rx (not (any word "-" " "))) "" (prin1-to-string arguments))))))
+  (defun logview--ert-defargtest-format-arguments (arguments)
+    (let ((print-quoted t))
+      (downcase (replace-regexp-in-string " " "/" (replace-regexp-in-string (rx (not (any word "-" " "))) "" (prin1-to-string arguments)))))))
 
 
 (defmacro logview--test-with-restriction (start end locking-label &rest body)
