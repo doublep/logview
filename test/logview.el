@@ -169,6 +169,10 @@ buffer if the test needs that."
         (setf from to)))
     (mapconcat #'identity (nreverse chunks) nil)))
 
+(defun logview--test-user-visible-buffer-lines ()
+  (let ((contents (logview--test-user-visible-buffer-string)))
+    (split-string contents "\n" (string-remove-suffix "\n" contents))))
+
 
 (defun logview--test-current-message ()
   (logview--std-temporarily-widening
@@ -713,6 +717,23 @@ buffer if the test needs that."
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))
                 (logview--subtest t (logview-last-section-any-thread)
                   (should (string= (logview--test-current-message) "serving request 4 (in a different thread)")))))))))))
+
+(ert-deftest logview-narrow-to-section-headers ()
+  (logview--test-with-file "log4j/sections-1.log"
+    :extra-customizations (logview--test-view-customizations '(:name "sections" :filters "lv INFO\na+ my\\.Server\nm+ serving request"))
+    (logview-set-section-view "sections")
+    (logview-toggle-narrow-to-section-headers 'toggle)
+    (should logview--narrow-to-section-headers)
+    ;; All visible lines must be section headers now.
+    (dolist (line (logview--test-user-visible-buffer-lines))
+      (should (string-match-p (rx bos (1+ (any digit "-:. ")) " [thread " digit "] INFO my.Server - serving request " digit) line)))
+    (logview-toggle-narrow-to-section-headers 'toggle)
+    (should-not logview--narrow-to-section-headers)
+    ;; Normal section contents must be back.  Check a couple.
+    (should (string-match-p (rx bol "2010-03-10 20:03:44.000 [thread 1] DEBUG my.Startup - starting up" eol)
+                            (logview--test-user-visible-buffer-string)))
+    (should (string-match-p (rx bol "2010-03-10 20:03:46.300 [thread 1] DEBUG my.Class - inside section 2" eol)
+                            (logview--test-user-visible-buffer-string)))))
 
 (ert-deftest logview-difference-to-section-headers ()
   (logview--test-with-file "log4j/sections-1.log"

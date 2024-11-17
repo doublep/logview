@@ -643,9 +643,6 @@ settings) with this face.")
 ;; {LOCKED-NARROWING}
 ;; Earlier Emacs 29 snapshots: need to set this variable to nil.
 (defvar long-line-threshold)
-(declare-function internal--unlock-narrowing (tag))
-(declare-function internal--unlabel-restriction (tag))
-(declare-function narrowing-unlock (tag))
 
 ;; Keep in sync with `logview--entry-*' and `logview--find-region-entries'.
 (defconst logview--timestamp-group 1)
@@ -720,6 +717,7 @@ See `logview--timestamp-difference-base' for details.")
 
 (defvar-local logview--main-filter-text             "")
 (defvar-local logview--thread-narrowing-filter-text "")
+(defvar-local logview--narrow-to-section-headers    nil)
 
 (defvar-local logview--preview-filter-text nil
   "Filters for which to show a preview.
@@ -868,6 +866,7 @@ works for \\[logview-set-navigation-view] and \\[logview-highlight-view-entries]
      (logview-first-section-any-thread   logview-last-section-any-thread     "First / last section in any thread")
      (logview-narrow-to-section                                              "Narrow to the current section and filter out other threads")
      (logview-narrow-to-section-keep-threads                                 "Narrow to the current section, but don’t touch thread filters")
+     (logview-toggle-narrow-to-section-headers                               "Toggle “narrowing” to section headers, i.e. showing only headers")
      (logview-toggle-sections-thread-bound                                   "Toggle whether sections are thread-bound")
      "See also \\[logview-set-section-view].")
     ("Explicitly hide or show entries"
@@ -1157,6 +1156,7 @@ that the line is not the first in the buffer."
                        ("c >" logview-last-section-any-thread)
                        ("c c" logview-narrow-to-section)
                        ("c C" logview-narrow-to-section-keep-threads)
+                       ("c h" logview-toggle-narrow-to-section-headers)
                        ("c t" logview-toggle-sections-thread-bound)
                        ;; Explicit entry hiding/showing commands.
                        ("h"   logview-hide-entry)
@@ -1469,11 +1469,13 @@ no prefix means zero."
                           (min (logview--entry-end entry start) to))))))
 
 (defun logview-widen ()
-  "Remove narrowing, including thread narrowing, from current buffer."
+  "Remove narrowing, including thread narrowing, from current buffer.
+Narrowing to section headers is canceled as well."
   (interactive)
   (logview--assert)
   (widen)
-  (setf logview--thread-narrowing-filter-text "")
+  (setf logview--thread-narrowing-filter-text ""
+        logview--narrow-to-section-headers    nil)
   (logview--parse-filters))
 
 (defun logview-widen-upwards ()
@@ -1748,20 +1750,22 @@ level to show entries regardless of text filters."
   "Reset all filters (level, name, thread).
 After this command only entries hidden by the thread-narrowing
 filters, hidden explictly, and entries outside narrowing buffer
-restrictions remain invisible."
+restrictions remain invisible.  Since narrowing to section
+headers doesn't count as a filter, it is also kept intact if
+active."
   (interactive)
-  (logview--do-reset-all-filters nil nil nil))
+  (logview--do-reset-all-filters nil nil nil nil))
 
 (defun logview-reset-all-filters-restrictions-and-hidings ()
   "Reset all visibility restrictions.
 In other words, reset all filters, show all explictly hidden
 entries and cancel any narrowing restrictions, including
-narrowing to threads."
+narrowing to threads and to section headers."
   (interactive)
   (widen)
-  (logview--do-reset-all-filters t t t))
+  (logview--do-reset-all-filters t t t t))
 
-(defun logview--do-reset-all-filters (also-reset-thread-narrowing also-show-details also-cancel-explicit-hiding)
+(defun logview--do-reset-all-filters (also-reset-thread-narrowing also-cancel-section-header-narrowing also-show-details also-cancel-explicit-hiding)
   (logview--assert)
   (when also-show-details
     (setq logview--hide-all-details nil))
@@ -1770,6 +1774,8 @@ narrowing to threads."
     (logview--retire-hiding-symbol 'logview--hidden-details-symbol))
   (when also-reset-thread-narrowing
     (setf logview--thread-narrowing-filter-text ""))
+  (when also-cancel-section-header-narrowing
+    (setf logview--narrow-to-section-headers nil))
   (unless (logview--parse-filters logview--valid-filter-prefixes)
     (logview--update-invisibility-spec)))
 
@@ -2142,6 +2148,31 @@ is visible."
             (message "Narrowed to section `%s'" (logview--trim-for-display (logview--entry-message entry start)))
           (message (concat "Narrowed to the first, unnamed section" (if (logview-sections-thread-bound-p) " of this thread" ""))))))
     (logview-narrow-from-this-entry)))
+
+(defun logview-toggle-narrow-to-section-headers (&optional arg set-view-if-needed)
+  "Toggle whether only sections headers are shown.
+Leaving only section headers visible is useful for long-distance
+navigation, i.e. when you want to find and switch to a completely
+different part of the log.  Section headers, typically, should
+provide a good overview of log structure.
+
+If invoked with prefix argument, leave only headers visible if
+the argument is positive, show full sections otherwise otherwise.
+
+If this command is used when performing an incremental search
+(with `\\<logview-isearch-map>\\[logview-toggle-narrow-to-section-headers]'), the change is temporary and lasts only until the
+search is ended.  This is for consistency with e.g. `M-s' or
+`M-r' during Isearch."
+  (interactive (list (or current-prefix-arg 'toggle)
+                     ;; Don't have UI to pick a view if already searching.
+                     (not isearch-mode)))
+  (logview--ensure-section-view set-view-if-needed)
+  (logview--toggle-option-locally 'logview--narrow-to-section-headers arg (called-interactively-p 'interactive)
+                                  "Showing only section headers"
+                                  "Showing both section headers and contents, as usually"
+                                  (lambda ()
+                                    (logview--parse-filters)
+                                    (logview--isearch-update-if-running))))
 
 (defun logview-toggle-sections-thread-bound (&optional arg)
   "Toggle whether sections are bound to threads.
@@ -3508,11 +3539,17 @@ See `logview--iterate-entries-forward' for details."
 
 (defun logview--update-mode-name ()
   (let ((view (logview--current-view)))
-    (setq mode-name (if view
-                        (if (plist-get view :index)
-                            (format "Logview/%s [%s]:%d" logview--submode-name (plist-get view :name) (plist-get view :index))
-                          (format "Logview/%s [%s]" logview--submode-name (plist-get view :name)))
-                      (format "Logview/%s" logview--submode-name)))
+    (setf mode-name `("Logview"
+                      "/"
+                      ;; FIXME: Add mouse keymaps where appropriate.  Not terribly important.
+                      (:propertize ,logview--submode-name help-echo "Log submode\nSee `logview-std-submodes' and `logview-additional-submodes'")
+                      ,@(when view
+                          `("[" (:propertize ,(plist-get view :name) help-echo "Current view\nType `v' to change") "]"
+                            ,@(when (plist-get view :index)
+                                `(":" (:propertize (number-to-string (plist-get view :index)) help-echo "View index\nType `M-1'...`M-0' to switch between views with index")))))
+                      ,@(when logview--narrow-to-section-headers
+                          `("!"
+                            (:propertize "OSH" face warning help-echo "Showing only section headers for easier long-distance navigation\nType `c h' to return to normal mode")))))
     ;; Sometimes it doesn't work automatically (e.g. when using `C-c C-a' in a
     ;; view-editing buffer and thus indirectly changing a different buffer's modeline).
     ;; Just force update at all times, not trying to figure out when it works by itself.
@@ -3562,7 +3599,10 @@ See `logview--iterate-entries-forward' for details."
         (preview-filters          (when logview-preview-filter-changes logview--preview-filter-text)))
     (when preview-filters
       (setf (if (car preview-filters) main-filters thread-narrowing-filters) (cdr preview-filters)))
-    (let ((filters (logview--do-parse-filters main-filters thread-narrowing-filters to-reset)))
+    (let ((filters (logview--do-parse-filters main-filters
+                                              thread-narrowing-filters
+                                              (when logview--narrow-to-section-headers (cdar logview--section-header-filter))
+                                              to-reset)))
       (unless (prog1 (equal (cdar logview--effective-filter) (cdar filters))
                 (setf logview--effective-filter filters)
                 (unless (and preview-filters (car preview-filters))
@@ -3573,7 +3613,7 @@ See `logview--iterate-entries-forward' for details."
         (logview--update-mode-name)
         t))))
 
-(defun logview--do-parse-filters (filters &optional thread-narrowing-filters to-reset-in-main-filters)
+(defun logview--do-parse-filters (filters &optional thread-narrowing-filters header-filter-key to-reset-in-main-filters)
   "Parse given FILTERS and optional THREAD-NARROWING-FILTERS.
 TO-RESET-IN-MAIN-FILTERS may be a list of strings like \"a+\" of
 filter types to discard.
@@ -3644,12 +3684,14 @@ or nil if there are no filters."
     (when (or min-shown-level
               include-name-regexps exclude-name-regexps
               include-thread-regexps exclude-thread-regexps include-thread-regexps-narrowing exclude-thread-regexps-narrowing
-              include-message-regexps exclude-message-regexps)
+              include-message-regexps exclude-message-regexps
+              header-filter-key)
       (cons (list (cons (when non-discarded-lines-main      (apply #'concat (nreverse non-discarded-lines-main)))
                         (when non-discarded-lines-narrowing (apply #'concat (nreverse non-discarded-lines-narrowing))))
                   min-shown-level min-always-shown-level include-name-regexps exclude-name-regexps
                   include-thread-regexps exclude-thread-regexps include-thread-regexps-narrowing exclude-thread-regexps-narrowing
-                  include-message-regexps exclude-message-regexps)
+                  include-message-regexps exclude-message-regexps
+                  header-filter-key)
             (let ((level-form (if (and min-shown-level min-always-shown-level) 'level '(logview--entry-level entry)))
                   clauses)
               (when min-shown-level
@@ -3661,14 +3703,14 @@ or nil if there are no filters."
               (push (logview--build-validator-regexp-clause include-name-regexps             exclude-name-regexps             logview--name-group)    clauses)
               (push (logview--build-validator-regexp-clause include-thread-regexps           exclude-thread-regexps           logview--thread-group)  clauses)
               (push (logview--build-validator-regexp-clause include-message-regexps          exclude-message-regexps          logview--message-group) clauses)
-              (setq clauses (delq nil clauses))
-              (let ((validator (if (cdr clauses) `(and ,@(nreverse clauses)) (car clauses))))
-                (when min-always-shown-level
-                  (setq validator `(or (<= ,level-form ,min-always-shown-level) ,validator)))
-                (when (eq level-form 'level)
-                  (setq validator `(let ((level (logview--entry-level entry))) ,validator)))
-                ;; Here `eval' is used to translate the lambda into a closure.
-                (byte-compile (eval `(lambda (entry start) (ignore start) ,validator) t))))))))
+              (when (setf clauses (delq nil clauses))
+                (let ((validator (if (cdr clauses) `(and ,@(nreverse clauses)) (car clauses))))
+                  (when min-always-shown-level
+                    (setq validator `(or (<= ,level-form ,min-always-shown-level) ,validator)))
+                  (when (eq level-form 'level)
+                    (setq validator `(let ((level (logview--entry-level entry))) ,validator)))
+                  ;; Here `eval' is used to translate the lambda into a closure.
+                  (byte-compile (eval `(lambda (entry start) (ignore start) ,validator) t)))))))))
 
 ;; To prevent refiltering on insignificant changes, we enforce canonical option ordering
 ;; and drop any duplicates.
@@ -3944,7 +3986,9 @@ This list is preserved across Emacs session in
     (setq logview--section-view-name (plist-get view :name))
     (unless (prog1 (equal (caar (car logview--section-header-filter)) (caar (car filters)))
               (setq logview--section-header-filter filters))
-      (logview--refontify-buffer))))
+      (unless (logview--parse-filters)
+        ;; If the effective filters haven't changed, we still need to refontify.
+        (logview--refontify-buffer)))))
 
 (defun logview--do-highlight-view-entries (view)
   (setq view (logview--find-view view t))
@@ -4034,6 +4078,7 @@ This list is preserved across Emacs session in
                        (displaying-differences        (or common-difference-base difference-bases-per-thread))
                        (difference-format-string      logview--timestamp-difference-format-string)
                        (header-filter                 (cdr logview--section-header-filter))
+                       (show-only-headers             (and header-filter logview--narrow-to-section-headers))
                        (highlighter                   (cdr logview--highlighted-filter))
                        (highlighted-part              logview-highlighted-entry-part)
                        (dim-unsearchable              (and logview-search-only-in-messages isearch-mode)))
@@ -4044,75 +4089,77 @@ This list is preserved across Emacs session in
                            filtered)
                        (if (or (null validator) (funcall validator entry start))
                            (let ((header-entry (and header-filter (funcall header-filter entry start))))
-                             (when have-level
-                               (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
-                                 (put-text-property start end 'face (car entry-faces))
-                                 (add-face-text-property (logview--entry-group-start entry start logview--level-group)
-                                                         (logview--entry-group-end   entry start logview--level-group)
-                                                         (cdr entry-faces))))
-                             (when have-timestamp
-                               (let ((from   (logview--entry-group-start entry start logview--timestamp-group))
-                                     (to     (logview--entry-group-end   entry start logview--timestamp-group))
-                                     (thread (when difference-bases-per-thread (logview--entry-group entry start logview--thread-group)))
-                                     timestamp-replaced)
-                                 (add-face-text-property from to 'logview-timestamp)
-                                 (when displaying-differences
-                                   (when (and header-entry difference-to-section-headers)
-                                     (let ((base `(,entry . ,start)))
-                                       (if difference-bases-per-thread
-                                           (puthash thread base difference-bases-per-thread)
-                                         (setf common-difference-base base))))
-                                   (let ((difference-base (or (when difference-bases-per-thread
-                                                                (gethash thread difference-bases-per-thread (when difference-bases-per-thread :unknown)))
-                                                              common-difference-base)))
-                                     ;; This is possible only when displaying differences to section header.
-                                     ;; Means that we don't yet know where the header is.
-                                     (when (eq difference-base :unknown)
-                                       ;; FIXME: Might need to improve performance here, e.g. using cache.
-                                       (save-excursion
-                                         (goto-char start)
-                                         (logview--forward-section 0)
-                                         (logview--locate-current-entry entry start
-                                           (setf difference-base (when (funcall (cdr logview--section-header-filter) entry start) `(,entry . ,start)))
-                                           (if difference-bases-per-thread
-                                               (puthash thread difference-base difference-bases-per-thread)
-                                             (setf common-difference-base difference-base)))))
-                                     ;; Hide timestamp with time difference if there is a difference
-                                     ;; base entry and we are not positioned over it right now.
-                                     (when (and difference-base (not (and (= (cdr difference-base) start)
-                                                                          (progn (logview--entry-timestamp entry start)  ; Make sure that it is parsed.
-                                                                                 (equal (car difference-base) entry)))))
-                                       ;; FIXME: It is possible that fractionals are not the last
-                                       ;;        thing in the timestamp, in which case it would be
-                                       ;;        nicer to add some spaces on the right. However,
-                                       ;;        it's not easy to do and is also quite unlikely,
-                                       ;;        so ignoring that for now.
-                                       (let* ((difference        (- (logview--entry-timestamp entry start)
-                                                                    (logview--entry-timestamp (car difference-base) (cdr difference-base))))
-                                              (difference-string (format difference-format-string difference))
-                                              (length-delta      (- to from (length difference-string))))
-                                         (when (> length-delta 0)
-                                           (setq difference-string (concat (make-string length-delta ? ) difference-string)))
-                                         (put-text-property from to 'display difference-string)
-                                         (setq timestamp-replaced t)))))
-                                 (unless timestamp-replaced
-                                   (remove-list-of-text-properties from to '(display)))))
-                             (when have-name
-                               (add-face-text-property (logview--entry-group-start entry start logview--name-group)
-                                                       (logview--entry-group-end   entry start logview--name-group)
-                                                       'logview-name))
-                             (when have-thread
-                               (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
-                                                       (logview--entry-group-end   entry start logview--thread-group)
-                                                       'logview-thread))
-                             (when header-entry
-                               (add-face-text-property start end 'logview-section))
-                             (when dim-unsearchable
-                               (add-face-text-property start (logview--entry-message-start entry start) 'logview-unsearchable))
-                             (when (and highlighter (funcall highlighter entry start))
-                               (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
-                                                       (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
-                                                       'logview-highlight)))
+                             (if (and show-only-headers (not header-entry))
+                                 (setf filtered t)
+                               (when have-level
+                                 (let ((entry-faces (aref logview--submode-level-faces (logview--entry-level entry))))
+                                   (put-text-property start end 'face (car entry-faces))
+                                   (add-face-text-property (logview--entry-group-start entry start logview--level-group)
+                                                           (logview--entry-group-end   entry start logview--level-group)
+                                                           (cdr entry-faces))))
+                               (when have-timestamp
+                                 (let ((from   (logview--entry-group-start entry start logview--timestamp-group))
+                                       (to     (logview--entry-group-end   entry start logview--timestamp-group))
+                                       (thread (when difference-bases-per-thread (logview--entry-group entry start logview--thread-group)))
+                                       timestamp-replaced)
+                                   (add-face-text-property from to 'logview-timestamp)
+                                   (when displaying-differences
+                                     (when (and header-entry difference-to-section-headers)
+                                       (let ((base `(,entry . ,start)))
+                                         (if difference-bases-per-thread
+                                             (puthash thread base difference-bases-per-thread)
+                                           (setf common-difference-base base))))
+                                     (let ((difference-base (or (when difference-bases-per-thread
+                                                                  (gethash thread difference-bases-per-thread (when difference-bases-per-thread :unknown)))
+                                                                common-difference-base)))
+                                       ;; This is possible only when displaying differences to section header.
+                                       ;; Means that we don't yet know where the header is.
+                                       (when (eq difference-base :unknown)
+                                         ;; FIXME: Might need to improve performance here, e.g. using cache.
+                                         (save-excursion
+                                           (goto-char start)
+                                           (logview--forward-section 0)
+                                           (logview--locate-current-entry entry start
+                                             (setf difference-base (when (funcall header-filter entry start) `(,entry . ,start)))
+                                             (if difference-bases-per-thread
+                                                 (puthash thread difference-base difference-bases-per-thread)
+                                               (setf common-difference-base difference-base)))))
+                                       ;; Hide timestamp with time difference if there is a difference
+                                       ;; base entry and we are not positioned over it right now.
+                                       (when (and difference-base (not (and (= (cdr difference-base) start)
+                                                                            (progn (logview--entry-timestamp entry start)  ; Make sure that it is parsed.
+                                                                                   (equal (car difference-base) entry)))))
+                                         ;; FIXME: It is possible that fractionals are not the last
+                                         ;;        thing in the timestamp, in which case it would be
+                                         ;;        nicer to add some spaces on the right. However,
+                                         ;;        it's not easy to do and is also quite unlikely,
+                                         ;;        so ignoring that for now.
+                                         (let* ((difference        (- (logview--entry-timestamp entry start)
+                                                                      (logview--entry-timestamp (car difference-base) (cdr difference-base))))
+                                                (difference-string (format difference-format-string difference))
+                                                (length-delta      (- to from (length difference-string))))
+                                           (when (> length-delta 0)
+                                             (setq difference-string (concat (make-string length-delta ? ) difference-string)))
+                                           (put-text-property from to 'display difference-string)
+                                           (setq timestamp-replaced t)))))
+                                   (unless timestamp-replaced
+                                     (remove-list-of-text-properties from to '(display)))))
+                               (when have-name
+                                 (add-face-text-property (logview--entry-group-start entry start logview--name-group)
+                                                         (logview--entry-group-end   entry start logview--name-group)
+                                                         'logview-name))
+                               (when have-thread
+                                 (add-face-text-property (logview--entry-group-start entry start logview--thread-group)
+                                                         (logview--entry-group-end   entry start logview--thread-group)
+                                                         'logview-thread))
+                               (when header-entry
+                                 (add-face-text-property start end 'logview-section))
+                               (when dim-unsearchable
+                                 (add-face-text-property start (logview--entry-message-start entry start) 'logview-unsearchable))
+                               (when (and highlighter (funcall highlighter entry start))
+                                 (add-face-text-property (if (eq highlighted-part 'message) (logview--entry-message-start entry start) start)
+                                                         (if (eq highlighted-part 'header)  (logview--space-back (logview--entry-message-start entry start)) end)
+                                                         'logview-highlight))))
                          (setq filtered t))
                        (logview--update-entry-invisibility start (logview--entry-details-start entry start) end filtered 'propagate 'propagate)
                        ;; There appears to be a bug in displaying code for the case that
@@ -4222,7 +4269,8 @@ This list is preserved across Emacs session in
 
 (defvar logview-isearch-map
   (let ((map (make-sparse-keymap)))
-    (dolist (binding '(("M-m" logview-toggle-search-only-in-messages)))
+    (dolist (binding '(("M-h" logview-toggle-narrow-to-section-headers)
+                       ("M-m" logview-toggle-search-only-in-messages)))
       (define-key map (kbd (car binding)) (cadr binding)))
     map)
   "Keymap used when isearching in a Logview buffer.")
@@ -4236,7 +4284,7 @@ This list is preserved across Emacs session in
 ;; with a user's private binding?
 (defun logview--starting-isearch ()
   (setf logview--isearch-option-originals nil)
-  (dolist (option '(logview-search-only-in-messages))
+  (dolist (option '(logview--narrow-to-section-headers logview-search-only-in-messages))
     (push `(,option . ,(symbol-value option)) logview--isearch-option-originals))
   (when logview-search-only-in-messages
     (logview--refontify-buffer))
@@ -4249,12 +4297,15 @@ This list is preserved across Emacs session in
     (setf logview--isearch-mode-map-original-parent parent)))
 
 (defun logview--ending-isearch ()
-  ;; Restore original values of certain options, for consistency with `M-c' or `M-r' during Isearch that
-  ;; affect only the current search.
   (when logview-search-only-in-messages
     (logview--refontify-buffer))
-  (dolist (entry logview--isearch-option-originals)
-    (set (car entry) (cdr entry)))
+  (let ((narrowed-to-section-headers (and logview--narrow-to-section-headers logview--section-header-filter)))
+    ;; Restore original values of certain options, for consistency with `M-c' or `M-r'
+    ;; during Isearch that affect only the current search.
+    (dolist (entry logview--isearch-option-originals)
+      (set (car entry) (cdr entry)))
+    (when (and narrowed-to-section-headers (not logview--narrow-to-section-headers))
+      (logview--parse-filters)))
   (setf logview--isearch-option-originals nil)
   (unless (eq logview--isearch-mode-map-original-parent t)
     (set-keymap-parent isearch-mode-map logview--isearch-mode-map-original-parent)
