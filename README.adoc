@@ -31,8 +31,9 @@ The mode is meant to be operated in read-only buffer, so most of the
 command bindings lack modifiers.
 
 Out-of-the-box the mode should be able to parse standard SLF4J (Log4j,
-Logback) files as long as they use ISO 8601 timestamps, Apache error
-logs, PHP Monolog logs, and certain UNIX files in `/var/log`.
+Logback) files, Apache error logs, PHP Monolog logs, and certain UNIX
+files in `/var/log`.  Nearly all typical timestamp formats, including
+localized ones, should be picked up automatically.
 
 toc::[]
 
@@ -350,6 +351,34 @@ replace timestamps for all non-header entries with the difference to
 the timestamp in the corresponding section’s header.  This is useful
 when investigating logs for sources of performance problems.
 
+Another use for sections is long-distance navigation in a huge log
+file.  You can use command `c h` to temporary “narrow” to only section
+headers.  Typically, the headers should be informative enough,
+e.g. contain accessed resource name (but this depends on how _you_
+define the section view), that you can quickly find the section you
+are interested in at the moment.  This functionality is also available
+from within <<isearch,Isearch>> as `M-h`.
+
+
+[#isearch]
+== Special Isearch support ==
+
+Logview adds a few extensions to Isearch.  When performing an
+incremental search, usually started with `C-s`, you can switch between
+showing entries normally and only section headers with `M-h` (see
+<<sections-explained,the explanation of log section>>).  Similarly,
+you can temporarily switch between searching all visible text (the
+default) and only visible message using `M-m` (outside Isearch this is
+available with `o m`).  When you activate any of these options from
+within Isearch, the change is temporary and is cancelled once you are
+done with the search.  This is for consistency with how e.g. `M-c` in
+Isearch operates: its change in case-folding also affects only the
+current search and is not remembered outside it.
+
+In addition, when searching only in messages, Logview will dim all
+other text, but only when incremental search is in progress.  This is
+done regardless of how the option is activated.
+
 
 == Commands
 
@@ -466,6 +495,7 @@ See <<sections-explained,more detailed description above>>.
 * Go to first / last section in any thread: `c <` / `c >`
 * Narrow to the current section: `c c`
 * As above, but don’t touch thread narrowing filters: `c C`
+* “Narrow” to section headers, i.e. don’t show any other entries: `c h`
 * Toggle whether sections are bound to threads: `c t`
 
 === Explicitly hide or show individual entries
@@ -536,6 +566,12 @@ want to abstract from existing entries.  Next time you issue command
 `g` after it, the buffer will contain all entries added between `G`
 and `g`.  `G` is roughly equivalent to the following sequence of
 commands: `g`, `w`, `>`, `[`.
+
+=== Extensions for Isearch mode ===
+
+* “Narrow” to section headers, i.e. don’t show any other entries: `M-h`
+  (normally available as `c h`)
+* Toggle “search only in messages”: `M-m` (normally available as `o m`)
 
 
 [#locked-narrowing]
