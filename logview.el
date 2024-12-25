@@ -57,6 +57,9 @@
 ;; For `string-trim' in earlier Emacs versions.
 (require 'subr-x)
 
+;; Needed for warning-free byte-compilation at least.
+(eval-when-compile (require 'compat))
+
 
 ;; We _append_ self to the list of mode rules so as to not clobber
 ;; other rules, as '.log' is a common file extension.  This also gives
