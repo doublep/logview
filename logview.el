@@ -7,7 +7,7 @@
 ;; Version:    0.19.1snapshot
 ;; Keywords:   files, tools
 ;; Homepage:   https://github.com/doublep/logview
-;; Package-Requires: ((emacs "25.1") (datetime "0.8") (extmap "1.0"))
+;; Package-Requires: ((emacs "25.1") (datetime "0.8") (extmap "1.0") (compat "29"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -640,10 +640,6 @@ settings) with this face.")
 
 ;;; Internal variables and constants.
 
-;; {LOCKED-NARROWING}
-;; Earlier Emacs 29 snapshots: need to set this variable to nil.
-(defvar long-line-threshold)
-
 ;; Keep in sync with `logview--entry-*' and `logview--find-region-entries'.
 (defconst logview--timestamp-group 1)
 (defconst logview--level-group     2)
@@ -932,23 +928,19 @@ macro `logview--std-temporarily-widening' instead."
   (declare (indent 0) (debug t))
   `(logview--do-temporarily-widening (lambda () ,@body)))
 
-;; Used so that `(fboundp 'without-restriction)' is not evaluated at compilation time.
 (defun logview--do-temporarily-widening (body)
   (save-restriction
-    (if (fboundp 'without-restriction)
-        ;; {LOCKED-NARROWING}
-        ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all
-        ;; tags I could find in Emacs source code.  Normally this should be enough, but
-        ;; there is obviously no guarantee as macro `with-restriction' is part of public
-        ;; Elisp interface now.
-        (without-restriction
-          :label 'long-line-optimizations-in-fontification-functions
-          (without-restriction
-            :label 'long-line-optimizations-in-command-hooks
-            (logview--do-widen)
-            (funcall body)))
-      (logview--do-widen)
-      (funcall body))))
+    ;; {LOCKED-NARROWING}
+    ;; "Hurr-durr, mah security, you cannot unlock without knowing the tag."  Try all
+    ;; tags I could find in Emacs source code.  Normally this should be enough, but
+    ;; there is obviously no guarantee as macro `with-restriction' is part of public
+    ;; Elisp interface now.
+    (without-restriction
+      :label 'long-line-optimizations-in-fontification-functions
+      (without-restriction
+        :label 'long-line-optimizations-in-command-hooks
+        (logview--do-widen)
+        (funcall body)))))
 
 (defun logview--do-widen ()
   (widen)
@@ -1240,13 +1232,10 @@ successfully.")
 
 (defun logview--set-up ()
   ;; {LOCKED-NARROWING}
-  ;; Logview is incompatible with locked narrowing of Emacs 29.  Later snapshots sort of
-  ;; allow us to unlock this shit sometimes, but not the earlier, there we can only set
-  ;; this variable in hope this prevents it from ever happening.
-  ;;
-  ;; See how `logview--temporarily-widening' uses `without-restriction'.
-  (when (and (boundp 'long-line-threshold) (not (fboundp 'without-restriction)))
-    (setq-local long-line-threshold nil))
+  ;; Previously would set `long-line-threshold' to nil on those 29 snapshots that already
+  ;; had this locking shit, but no way to unlock at all.  Because of `compat' usage we can
+  ;; no longer detect that, even unreliably, so on 29 snapshots things can get ugly.
+  ;; Ignore: we simply don't support old Emacs snapshots.
   (logview--update-keymap)
   (add-hook 'read-only-mode-hook #'logview--update-keymap nil t)
   (setq font-lock-defaults (copy-sequence logview-font-lock-defaults))

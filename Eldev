@@ -2,6 +2,7 @@
 
 (eldev-require-version "1.10.3")
 
+(eldev-use-package-archive 'gnu)        ; Needed for `compat'.
 (eldev-use-package-archive 'melpa)
 
 (setf eldev-release-post-release-commit-message "Post-release version bump."
