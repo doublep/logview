@@ -72,6 +72,9 @@
   (if (fboundp 'with-restriction)
       `(with-restriction ,start ,end
          :label ,locking-label
+         ;; Needed because apparently `with-restriction' coming out of `compat' on pre-29 Emacs otherwise
+         ;; doesn't list the variable as "used" and we get a byte-compilation warning.
+         (ignore ,locking-label)
          ,@body)
     `(progn (ignore ,locking-label)
             (narrow-to-region ,start ,end)
