@@ -1,9 +1,16 @@
 #!/bin/sh
 
+DISCLAIMER="Remember that you can ignore these checks and force-commit with 'git commit -n'"
+
 # This can be used in a comment as a reminder to self.
 git diff-index --cached -S "DONOTCOMMIT" HEAD --patch --exit-code ":!githooks" \
-    || { echo; echo "Have you forgotten about the “DONOTCOMMIT”?"; exit 1; }
+    || { echo; echo "Have you forgotten about the “DONOTCOMMIT”?"; echo $DISCLAIMER; exit 1; }
+
+git diff-index --cached                  HEAD -u . \
+    | egrep -C3 "^-.*DONOTCHANGETHIS" \
+    && { echo "There is a changed line with DONOTCHANGETHIS in it"; echo $DISCLAIMER; exit 1; } \
+    || true
 
 # Eldev functions can be used during development, but must not be committed.
 git diff-index --cached -S "eldev-" HEAD --patch --exit-code ":!githooks" ":!Eldev" \
-    || { echo; echo "Don't commit code relying on Eldev!"; exit 1; }
+    || { echo; echo "Don't commit code relying on Eldev!"; echo $DISCLAIMER; exit 1; }

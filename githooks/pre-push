@@ -1,0 +1,10 @@
+#!/bin/sh
+
+DISCLAIMER="Remember that you can ignore these checks and force-push with 'git push --no-verify'"
+
+REMOTE=$1
+
+git log "$REMOTE/HEAD..HEAD" \
+    | egrep -C5 "DONOTPUSH" \
+    && { echo "There is a not-yet-pushed commit with DONOTPUSH in its message"; echo $DISCLAIMER; exit 1; } \
+    || true
