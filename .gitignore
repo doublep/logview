@@ -5,3 +5,7 @@
 .flycheck_*.el
 
 /dist
+
+# Helpful for those who check out this out directly into `~/.emacs.d/elpa'.
+/logview-autoloads.el
+/logview-pkg.el

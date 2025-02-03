@@ -266,7 +266,7 @@ aliases  [optional]
     as the name."
   :group 'logview
   :type  logview--additional-submodes-type
-  :set   'logview--set-submode-affecting-variable
+  :set   #'logview--set-submode-affecting-variable
   :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
 
 (defcustom logview-additional-level-mappings nil
@@ -328,7 +328,7 @@ as the name."
                               (cons :tag "" (const :tag "Trace levels:"       trace)       (repeat string))
                               (set :inline t
                                    (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
-  :set   'logview--set-submode-affecting-variable)
+  :set   #'logview--set-submode-affecting-variable)
 
 (defcustom logview-additional-timestamp-formats nil
   "Association list of additional timestamp formats.
@@ -366,7 +366,7 @@ work just as the name."
                                    (cons :tag "" (const :tag "Datetime options:"   datetime-options) plist)
                                    (cons :tag "" (const :tag "Regular expression:" regexp)           regexp)
                                    (cons :tag "" (const :tag "Aliases:" aliases) (repeat string))))))
-  :set   'logview--set-submode-affecting-variable)
+  :set   #'logview--set-submode-affecting-variable)
 
 
 (defcustom logview-guess-lines 500
@@ -469,7 +469,7 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
   :type  '(choice (const :tag "The whole entry"                  whole)
                   (const :tag "Entry header (date, level, etc.)" header)
                   (const :tag "Entry message"                    message))
-  :set   'logview--set-highlight-affecting-variable)
+  :set   #'logview--set-highlight-affecting-variable)
 
 
 (defcustom logview-pulse-entries '(section-movement navigation-view timestamp-gap)
@@ -1204,13 +1204,13 @@ that the line is not the first in the buffer."
                        ("u"   universal-argument)))
       (define-key map (kbd (car binding)) (cadr binding)))
     (dotimes (k 10)
-      (define-key map (kbd (format "M-%d" k)) 'logview-switch-to-view-by-index))
+      (define-key map (kbd (format "M-%d" k)) #'logview-switch-to-view-by-index))
     map))
 
 (defvar logview-mode-inactive-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-c") 'logview-choose-submode)
-    (define-key map (kbd "C-c C-s") 'logview-customize-submode-options)
+    (define-key map (kbd "C-c C-c") #'logview-choose-submode)
+    (define-key map (kbd "C-c C-s") #'logview-customize-submode-options)
     map)
   "Keymap used by `logview-mode' when the mode is inactive.
 Mode is inactive when the buffer is not read-only (to not
@@ -2849,7 +2849,7 @@ These are:
     (help-mode)
     (let ((map (make-sparse-keymap)))
       (set-keymap-parent map help-mode-map)
-      (substitute-key-definition 'revert-buffer 'undefined map help-mode-map)
+      (substitute-key-definition #'revert-buffer #'undefined map help-mode-map)
       (use-local-map map)))
   (pop-to-buffer "*Logview cheat sheet*"))
 
@@ -2882,7 +2882,7 @@ These are:
                           best-length                 (length keys)
                           best-matches-preferred-keys matches-preferred-keys))))
               (push (if keys (propertize keys 'face 'font-lock-builtin-face) "") strings))))
-        (let ((string (mapconcat 'identity (nreverse strings) " / ")))
+        (let ((string (mapconcat #'identity (nreverse strings) " / ")))
           (if width
               (format (format "%%%ds" width) string)
             string)))
@@ -3096,8 +3096,8 @@ returns non-nil."
              (setq levels (logview--get-split-alists (cdr (assq 'levels definition)) "level mapping"
                                                      logview-additional-level-mappings logview-std-level-mappings))
              (push (format "\\(?%d:%s\\)" logview--level-group
-                           (regexp-opt (apply 'append (mapcar (lambda (final-level) (cdr (assq final-level levels)))
-                                                              logview--final-levels))))
+                           (regexp-opt (apply #'append (mapcar (lambda (final-level) (cdr (assq final-level levels)))
+                                                               logview--final-levels))))
                    parts)
              (push 'level features))
             ((match-beginning logview--message-group)
@@ -3854,9 +3854,9 @@ next line, which is usually one line beyond END."
   ;; If nothing is found: if TYPE is nil, just return nil, else signal
   ;; a user error with TYPE as missing thing description.
   (catch 'found
-    (apply 'logview--iterate-split-alists (lambda (name value)
-                                            (when (or (equal name key) (member key (cdr (assq 'aliases value))))
-                                              (throw 'found value)))
+    (apply #'logview--iterate-split-alists (lambda (name value)
+                                             (when (or (equal name key) (member key (cdr (assq 'aliases value))))
+                                               (throw 'found value)))
            alists)
     (when type
       (user-error "Unknown %s '%s'" type key))))
@@ -4236,7 +4236,7 @@ This list is preserved across Emacs session in
             (when (not (invisible-p (get-text-property begin 'invisible substring)))
               (push (substring substring begin end) chunks))
             (setq begin end))
-          (apply 'concat (nreverse chunks)))
+          (apply #'concat (nreverse chunks)))
       substring)))
 
 (defun logview--isearch-filter-predicate (begin end)
