@@ -2985,7 +2985,10 @@ returns non-nil."
          ;; zero-based offset.
          (compare-from-bytes (1- (position-bytes compare-from))))
     (with-temp-buffer
-      (insert-file-contents file nil compare-from-bytes nil)
+      ;; As of Emacs 30 this fails when trying to read past the end of the file (in earlier Emacs versions it
+      ;; works, but doesn't insert anything).  Don't care to report anything to Emacs-devel (maybe it's even
+      ;; intentional in this case, don't know), just work with either behavior by suppressing all errors.
+      (ignore-errors (insert-file-contents file nil compare-from-bytes nil))
       (let ((temporary      (current-buffer))
             (temporary-size (buffer-size)))
         (if (and (>= temporary-size reassurance-chars)

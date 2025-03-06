@@ -127,12 +127,14 @@ buffer if the test needs that."
   ;; results.  Of course, this has no visible effect when running
   ;; tests from command line, as customization never takes place in
   ;; this case to begin with.
-  (let (erase-customizations
+  (let (visit-it
+        erase-customizations
         extra-customizations
         warning-handling
         buffer-mode)
     (while (keywordp (car body))
       (pcase-exhaustive (pop body)
+        (:visit-it             (setf visit-it             (pop body)))
         (:extra-customizations (setf extra-customizations (eval (pop body) t)))
         (:warning-handling     (setf warning-handling     (pop body)))
         (:buffer-mode          (setf buffer-mode          (pop body)))))
@@ -150,7 +152,7 @@ buffer if the test needs that."
                                                        (`standard (apply original arguments))
                                                        (_         (error "Warning elevated to an error: %S" arguments)))))
          (with-temp-buffer
-           (insert-file-contents (expand-file-name ,filename logview--test-directory))
+           (insert-file-contents (expand-file-name ,filename logview--test-directory) ,visit-it)
            (,(or buffer-mode 'logview-mode))
            (should (eq major-mode ',(or buffer-mode 'logview-mode)))
            ,@body)))))
@@ -383,6 +385,24 @@ buffer if the test needs that."
     (logview-next-entry)
     (logview-next-entry)
     (should-error (logview-next-entry) :type 'user-error)))
+
+
+(ert-deftest logview-refresh-shrunk-log-file ()
+  (let ((file (make-temp-file "log")))
+    ;; Insert the contents of `log4j/en-1.log' over and over again, so that the `file' is long enough.
+    (with-temp-file file
+      (insert-file-contents (expand-file-name "log4j/en-1.log" logview--test-directory))
+      (let ((contents (buffer-string)))
+        (dotimes (_ 1000)
+          (insert contents)))
+      (should (> (buffer-size) logview-reassurance-chars)))
+    (logview--test-with-file file
+      :visit-it t
+      (should (equal logview--submode-name "SLF4J"))
+      ;; This essentially erases file contents.
+      (with-temp-file file)
+      (logview-refresh-buffer-as-needed)
+      (should (equal (buffer-size) 0)))))
 
 
 ;; RFC 5424 levels.
