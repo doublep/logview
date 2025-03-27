@@ -2955,9 +2955,7 @@ returns non-nil."
          (size               (1+ (buffer-size)))
          (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
          (compare-from       (- size reassurance-chars))
-         ;; 'position-bytes' appears to count from 1, yet we need
-         ;; zero-based offset.
-         (compare-from-bytes (1- (position-bytes compare-from))))
+         (compare-from-bytes (bufferpos-to-filepos compare-from)))
     (with-temp-buffer
       ;; As of Emacs 30 this fails when trying to read past the end of the file (in earlier Emacs versions it
       ;; works, but doesn't insert anything).  Don't care to report anything to Emacs-devel (maybe it's even
