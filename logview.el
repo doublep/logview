@@ -919,7 +919,7 @@ macro `logview--std-temporarily-widening' instead."
   ;; code can irreversibly freeze Emacs, but this is of course "not a bug":
   ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=57804.  They care about responsiveness
   ;; with long lines, but not here, right.
-  (unless (and (= (point-min) 1) (= (point-max) (1+ (buffer-size))))
+  (unless (= (- (point-max) (point-min)) (buffer-size))
     (error "Logview is incompatible with locked narrowing; see https://github.com/doublep/logview#locked-narrowing")))
 
 (defmacro logview--std-temporarily-widening (&rest body)
@@ -1015,9 +1015,9 @@ two functions (available since the first call) further."
   "Return end of previous line.
 This function assumes POSITION is at the beginning of a line.  If
 this is the first line, don't change POSITION."
-  (if (> position 1)
+  (if (> position (point-min))
       (1- position)
-    1))
+    (point-min)))
 
 (defsubst logview--character-back (position)
   "Return end of previous line assumin non-first line.
@@ -2812,7 +2812,7 @@ These are:
                   (insert "  " (logview--help-format-keys entry "[1-5]" keys-width)
                           "  " (logview--help-substitute-keys (car (last entry))) "\n")
                 (insert "\n  " (replace-regexp-in-string "\n" "\n  " (logview--help-substitute-keys entry)) "\n")))))))
-    (goto-char 1)
+    (goto-char (point-min))
     (help-mode)
     (let ((map (make-sparse-keymap)))
       (set-keymap-parent map help-mode-map)
@@ -2924,14 +2924,21 @@ restrictions most likely wouldn't make any sense with new text."
   (interactive)
   (let* ((narrowed             (buffer-narrowed-p))
          (reassurance-chars    (max logview-reassurance-chars 1))
-         (first-characters     (when narrowed (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars)))))
+         (first-characters     (when narrowed
+                                 (logview--temporarily-widening
+                                  (buffer-substring-no-properties
+                                   (point-min)
+                                   (min (point-max) reassurance-chars)))))
          (revert-without-query (when buffer-file-name (list (regexp-quote buffer-file-name))))
          (was-read-only        buffer-read-only))
     (revert-buffer nil nil t)
     ;; Apparently 'revert-buffer' resets this.
     (read-only-mode (if was-read-only 1 0))
     (if narrowed
-        (let ((same-contents (string= (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars))) first-characters)))
+        (let ((same-contents (logview--temporarily-widening
+                              (string= (buffer-substring-no-properties
+                                        (point-min) (min (point-max) reassurance-chars))
+                                       first-characters))))
           (if same-contents
               (message "Reverted the buffer; kept the narrowing as the start contents is the same")
             (logview-widen)
@@ -2959,7 +2966,8 @@ returns non-nil."
       (let ((temporary      (current-buffer))
             (temporary-size (buffer-size)))
         (if (and (>= temporary-size reassurance-chars)
-                     (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
+                     (string= (buffer-substring-no-properties
+                               (point-min) (1+ reassurance-chars))
                               (with-current-buffer buffer
                                 (logview--std-temporarily-widening
                                   (buffer-substring-no-properties compare-from size)))))
@@ -3006,7 +3014,7 @@ returns non-nil."
           (push (cdr format) standard-timestamps))
         (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
-          (goto-char 1)
+          (goto-char (point-min))
           (while (and (< line-number (max logview-guess-lines 1)) (> remaining-attemps 0) (not (eobp)))
             (let ((line (buffer-substring-no-properties (point) (progn (end-of-line) (point)))))
               (let (promising)
@@ -3382,10 +3390,12 @@ something similar first."
                        (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
                               (get-text-property entry-at 'logview-entry)))))
     (if entry
-        (when (and (> entry-at 1) (eq (get-text-property (1- entry-at) 'logview-entry) entry))
-          (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) 1)))
+        (when (and (> entry-at (point-min))
+                   (eq (get-text-property (1- entry-at) 'logview-entry) entry))
+          (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) (point-min))))
       (when (setq entry-at (or (next-single-property-change entry-at 'logview-entry)
-                               (when (and (> entry-at 1) (get-text-property (1- entry-at) 'logview-entry))
+                               (when (and (> entry-at (point-min))
+                                          (get-text-property (1- entry-at) 'logview-entry))
                                  (previous-single-property-change entry-at 'logview-entry))))
         (setq entry (get-text-property entry-at 'logview-entry))))
     (if entry
@@ -3430,13 +3440,15 @@ See `logview--iterate-entries-forward' for details."
     (when entry+start
       (let ((entry    (car entry+start))
             (entry-at (cdr entry+start))
-            (limit    (if only-visible (logview--point-min) 1)))
+            (limit    (if only-visible (logview--point-min) (point-min))))
         (unless (and skip-current (< (setq entry-at (1- entry-at)) limit))
           (while (and (setq entry (or (get-text-property entry-at 'logview-entry)
-                                      (progn (logview--find-region-entries (max 1 (- entry-at logview--lazy-region-size)) (1+ entry-at) t)
+                                      (progn (logview--find-region-entries (max (point-min) (- entry-at logview--lazy-region-size)) (1+ entry-at) t)
                                              (get-text-property entry-at 'logview-entry))))
-                      (progn (unless (or (= entry-at 1) (not (eq (get-text-property (1- entry-at) 'logview-entry) entry)))
-                               (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) 1)))
+                      (progn (unless (or (= entry-at (point-min))
+                                         (not (eq (get-text-property (1- entry-at) 'logview-entry) entry)))
+                               (setq entry-at (or (previous-single-property-change entry-at 'logview-entry)
+                                                  (point-min))))
                              (when (or (and only-visible (invisible-p entry-at))
                                        (and validator (not (funcall validator entry entry-at)))
                                        (funcall callback entry entry-at))
@@ -3480,7 +3492,7 @@ See `logview--iterate-entries-forward' for details."
       message
     (with-temp-buffer
       (insert message)
-      (goto-char 1)
+      (goto-char (point-min))
       (let ((cut-after (point)))
         (while (and (search-forward-regexp (rx word eow) nil t)
                     (when (<= (1- (point)) (- max-length 3))
@@ -3509,9 +3521,9 @@ See `logview--iterate-entries-forward' for details."
                           `("[" (:propertize ,(plist-get view :name) help-echo "Current view\nType `v' to change") "]"
                             ,@(when (plist-get view :index)
                                 `(":" (:propertize (number-to-string (plist-get view :index)) help-echo "View index\nType `M-1'...`M-0' to switch between views with index")))))
-                      ,@(when logview--narrow-to-section-headers
-                          `("!"
-                            (:propertize "OSH" face warning help-echo "Showing only section headers for easier long-distance navigation\nType `c h' to return to normal mode")))))
+                      (logview--narrow-to-section-headers
+                       `("!"
+                         (:propertize "OSH" face warning help-echo "Showing only section headers for easier long-distance navigation\nType `c h' to return to normal mode")))))
     ;; Sometimes it doesn't work automatically (e.g. when using `C-c C-a' in a
     ;; view-editing buffer and thus indirectly changing a different buffer's modeline).
     ;; Just force update at all times, not trying to figure out when it works by itself.
@@ -3705,7 +3717,7 @@ or nil if there are no filters."
     (insert filters)
     (unless (bolp)
       (insert "\n"))
-    (goto-char 1)
+    (goto-char (point-min))
     (logview--iterate-filter-buffer-lines callback)))
 
 (defun logview--iterate-filter-buffer-lines (callback)
@@ -4340,7 +4352,7 @@ only edits after it get discarded."
     (when process-filters
       (if (eq mode 'views)
           (let ((new-views (save-excursion
-                             (goto-char 1)
+                             (goto-char (point-min))
                              (logview--parse-view-definitions t))))
             (if logview-filter-edit--editing-views-for-submode
                 (let ((combined-views (nreverse new-views)))
@@ -4353,7 +4365,8 @@ only edits after it get discarded."
             (logview--after-updating-view-definitions)
             (with-current-buffer parent
               (logview--update-mode-name)))
-        (let ((filters      (buffer-substring-no-properties 1 (1+ (buffer-size))))
+        (let ((filters      (buffer-substring-no-properties
+                             (point-min) (1+ (buffer-size))))
               (hint-comment (logview-filter-edit--hint-comment)))
             (when (string-prefix-p hint-comment filters)
               (setf filters (substring filters (length hint-comment))))
@@ -4381,7 +4394,7 @@ only edits after it get discarded."
     (unless (bolp)
       (insert "\n")))
   ;; Put cursor at the first filter beginning if possible.
-  (goto-char 1)
+  (goto-char (point-min))
   (logview--iterate-filter-buffer-lines (lambda (type _line-begin begin _end)
                                           (if (member type logview--valid-filter-prefixes)
                                               (progn (goto-char begin) nil)
