@@ -264,7 +264,6 @@ aliases  [optional]
 
     Submode can have any number of optional aliases, which work just
     as the name."
-  :group 'logview
   :type  logview--additional-submodes-type
   :set   #'logview--set-submode-affecting-variable
   :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
@@ -318,7 +317,6 @@ map to the levels of the mode.  This is the case with RFC 5424:
 
 Mapping can have any number of optional aliases, which work just
 as the name."
-  :group 'logview
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
                               (cons :tag "" (const :tag "Error levels:"       error)       (repeat string))
@@ -357,7 +355,6 @@ also specified.
 
 Timestamp format can have any number of optional aliases, which
 work just as the name."
-  :group 'logview
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
                               (set :inline t
@@ -376,7 +373,6 @@ not even looked at.  If several lines look like log entry starts,
 but still cannot be matched against known submodes, the rest is
 skipped, see variable `logview-max-promising-lines'.  However,
 setting this to a ridiculously large number can still be slow."
-  :group 'logview
   :type  'integer)
 
 (defcustom logview-max-promising-lines 3
@@ -389,7 +385,6 @@ avoiding very long unsuccessful guessing times even when
 
 Setting this to zero makes the mode match against all
 `logview-guess-lines'."
-  :group 'logview
   :type  'integer)
 
 (defcustom logview-auto-revert-mode nil
@@ -405,7 +400,6 @@ to it.
 
 To temporarily activate or deactivate Auto-Revert (Tail) mode in
 a Logview buffer type `\\<logview-mode-map>\\[auto-revert-mode]' or `\\<logview-mode-map>\\[auto-revert-tail-mode]'."
-  :group 'logview
   :type  '(choice (const :tag "Off"                   nil)
                   (const :tag "Auto-Revert mode"      auto-revert-mode)
                   (const :tag "Auto-Revert Tail mode" auto-revert-tail-mode)))
@@ -417,7 +411,6 @@ to compare part of the file on disk with part of the buffer to
 make sure (even if not with 100% guarantee) that the buffer
 really represents beginning of its backing file.  The command
 will refuse to complete operation unless this check succeeds."
-  :group 'logview
   :type  'integer)
 
 
@@ -425,7 +418,6 @@ will refuse to complete operation unless this check succeeds."
   "Default target gap length for `\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar commands.
 This must be a non-negative number of seconds.  Can be changed
 temporarily for a single buffer with `\\<logview-mode-map>\\[logview-change-target-gap-length]'."
-  :group 'logview
   :type  'number)
 
 (defcustom logview-copy-visible-text-only t
@@ -434,7 +426,6 @@ Standard Emacs behavior is to copy even invisible text, but that
 typically doesn't make much sense with filtering.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-copy-visible-text-only]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-search-only-in-messages nil
@@ -444,7 +435,6 @@ anywhere.  However, it is sometimes useful to ignore other parts
 of log entries, e.g. timestamp when searching for numbers.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-search-only-in-messages]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-preview-filter-changes t
@@ -453,19 +443,16 @@ This preview is activated whenever you change the filters in the
 buffer popped up by `\\<logview-mode-map>\\[logview-edit-filters]' or `\\<logview-mode-map>\\[logview-edit-thread-narrowing-filters]'.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-filter-preview]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-show-ellipses t
   "Whether to show ellipses to indicate hidden log entries.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-show-ellipses]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-highlighted-entry-part 'whole
   "Which parts of an entry get highlighted with `\\<logview-mode-map>\\[logview-highlight-view-entries]'."
-  :group 'logview
   :type  '(choice (const :tag "The whole entry"                  whole)
                   (const :tag "Entry header (date, level, etc.)" header)
                   (const :tag "Entry message"                    message))
@@ -475,7 +462,6 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
 (defcustom logview-pulse-entries '(section-movement navigation-view timestamp-gap)
   "When to briefly highlight the current entry.
 You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
-  :group 'logview
   :type  '(set :inline t
                (const :tag "After section movement commands" section-movement)
                (const :tag "After navigating a view with `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' or `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]'" navigation-view)
@@ -485,7 +471,6 @@ You can also pulse the current entry unconditionally with `\\<logview-mode-map>\
 
 (defcustom logview-views-file (locate-user-emacs-file "logview.views")
   "Simple text file in which defined views are stored."
-  :group 'logview
   :type  'file)
 
 (defcustom logview-cache-filename (locate-user-emacs-file "logview-cache.extmap")
@@ -493,12 +478,10 @@ You can also pulse the current entry unconditionally with `\\<logview-mode-map>\
 Customizable in case you want to put it somewhere else.  This
 file can be safely deleted, but will be recreated by Logview next
 time you use the mode.  Used to make startup faster."
-  :group 'logview
   :type  'file)
 
 (defcustom logview-completing-read-function nil
   "Completion system used by Logview."
-  :group 'logview
   :type  '(radio
            (const :tag "Auto" nil)
            (function-item completing-read)
@@ -519,78 +502,65 @@ time you use the mode.  Used to make startup faster."
      :background "#600000")
     (t
      :background "#ffe0e0"))
-  "Face to use for error log entries."
-  :group 'logview-faces)
+  "Face to use for error log entries.")
 
 (defface logview-level-warning
   '((t :inherit warning))
-  "Face to use for warning level strings."
-  :group 'logview-faces)
+  "Face to use for warning level strings.")
 
 (defface logview-warning-entry
   '((((background dark))
      :background "#606000")
     (t
      :background "#ffffe0"))
-  "Face to use for warning log entries."
-  :group 'logview-faces)
+  "Face to use for warning log entries.")
 
 (defface logview-level-information
   '((t :inherit success))
-  "Face to use for information level strings."
-  :group 'logview-faces)
+  "Face to use for information level strings.")
 
 (defface logview-information-entry
   '((((background dark))
      :background "#004000")
     (t
      :background "#e8ffe8"))
-  "Face to use for information log entries."
-  :group 'logview-faces)
+  "Face to use for information log entries.")
 
 (defface logview-level-debug
   nil
-  "Face to use for debug level strings."
-  :group 'logview-faces)
+  "Face to use for debug level strings.")
 
 (defface logview-debug-entry
   nil
-  "Face to use for debug log entries."
-  :group 'logview-faces)
+  "Face to use for debug log entries.")
 
 (defface logview-level-trace
   '((t :inherit shadow))
-  "Face to use for trace level strings."
-  :group 'logview-faces)
+  "Face to use for trace level strings.")
 
 (defface logview-trace-entry
   '((((background dark))
      :background "#404040")
     (t
      :background "#f0f0f0"))
-  "Face to use for trace log entries."
-  :group 'logview-faces)
+  "Face to use for trace log entries.")
 
 (defface logview-timestamp
   '((t :inherit font-lock-builtin-face))
-  "Face to use for log entry timestamp."
-  :group 'logview-faces)
+  "Face to use for log entry timestamp.")
 
 (defface logview-name
   '((t :inherit font-lock-string-face))
-  "Face to use for logger name."
-  :group 'logview-faces)
+  "Face to use for logger name.")
 
 (defface logview-thread
   '((t :inherit font-lock-variable-name-face))
-  "Face to use for logger thread."
-  :group 'logview-faces)
+  "Face to use for logger thread.")
 
 (defface logview-section
   '((t :inverse-video t
        :weight        bold))
-  "Face to use for a section's header."
-  :group 'logview-faces)
+  "Face to use for a section's header.")
 
 (defface logview-highlight
   '((((background dark))
@@ -599,8 +569,7 @@ time you use the mode.  Used to make startup faster."
      :background "#f8d0ff"))
   "Face to highlight entries of a view chosen with `\\<logview-mode-map>\\[logview-highlight-view-entries]'.
 Variable `logview-highlighted-entry-part' controls how exactly
-this face is applied."
-  :group 'logview-faces)
+this face is applied.")
 
 (defface logview-pulse
   '((((background dark))
@@ -609,8 +578,7 @@ this face is applied."
      :background "#c0c0ff"))
   "Face to briefly highlight entries to draw attention.
 Variable `logview-pulse-entries' controls in which situations
-this face is used."
-  :group 'logview-faces)
+this face is used.")
 
 (defface logview-unsearchable
   '((t :inherit shadow))
@@ -636,8 +604,7 @@ settings) with this face.")
     (t
      :background "#ffe0c0"
      :weight     bold))
-  "Face to use for type prefixes in filter editing buffer."
-  :group 'logview-faces)
+  "Face to use for type prefixes in filter editing buffer.")
 
 
 
