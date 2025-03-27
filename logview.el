@@ -4305,12 +4305,12 @@ This list is preserved across Emacs session in
       (define-key map (kbd (car binding)) (cadr binding)))
     map))
 
+(defvar logview-filter-edit-font-lock-keywords
+  '(logview-filter-edit--font-lock-region))
+
 (define-derived-mode logview-filter-edit-mode nil "Logview Filters"
   "Major mode for editing filters of a Logview buffer."
-  (logview-filter-edit--font-lock-region (point-min) (point-max))
-  ;; FIXME: Use `font-lock-defaults' as in the main buffer.  Not very important, as filter
-  ;;        buffers are usually not large.
-  (add-hook 'after-change-functions #'logview-filter-edit--font-lock-region t t)
+  (setq-local font-lock-defaults '(logview-filter-edit-font-lock-keywords t))
   (add-hook 'after-change-functions #'logview-filter-edit--schedule-preview t t))
 
 (defun logview-filter-edit-save ()
@@ -4400,13 +4400,12 @@ only edits after it get discarded."
                                             t)))
   (set-buffer-modified-p nil))
 
-(defun logview-filter-edit--font-lock-region (region-begin region-end &optional _old-length)
+(defun logview-filter-edit--font-lock-region (region-end)
   (save-excursion
     (save-match-data
       ;; Not even in a Logview mode buffer, not using `std'.
       (logview--temporarily-widening
         (with-silent-modifications
-          (goto-char region-begin)
           (forward-line 0)
           ;; Never try to parse from the middle of a multiline filter.
           (while (and (not (bobp))
@@ -4467,7 +4466,9 @@ only edits after it get discarded."
                                        t))))
                           t)))
                (put-text-property begin end 'face 'error))
-             (< (point) region-end))))))))
+             (< (point) region-end)))))))
+  ;; Tell font-lock that it's not worth calling us back for "further matches".
+  nil)
 
 (defun logview-filter-edit--schedule-preview (&rest _ignored)
   (unless (or logview-filter-edit--preview-timer (eq logview-filter-edit--mode 'views))
