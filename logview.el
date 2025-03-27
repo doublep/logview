@@ -4352,13 +4352,14 @@ only edits after it get discarded."
           (let ((new-views (save-excursion
                              (goto-char (point-min))
                              (logview--parse-view-definitions t))))
-            (if logview-filter-edit--editing-views-for-submode
-                (let ((combined-views (nreverse new-views)))
-                  (dolist (view (logview--views))
-                    (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
-                      (push view combined-views)))
-                  (setf logview--views (nreverse combined-views)))
-              (setf logview--views new-views))
+            (setf logview--views
+                  (if logview-filter-edit--editing-views-for-submode
+                      (let ((combined-views (nreverse new-views)))
+                        (dolist (view (logview--views))
+                          (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
+                            (push view combined-views)))
+                        (nreverse combined-views))
+                    new-views))
             (setf logview--views-need-saving t)
             (logview--after-updating-view-definitions)
             (with-current-buffer parent
