@@ -2950,41 +2950,46 @@ restrictions most likely wouldn't make any sense with new text."
 If NO-ERRORS is non-nil and the file has changed in a non-growing
 way, returns nil rather than barking.  In case of success, always
 returns non-nil."
-  (let* ((buffer             (current-buffer))
-         (file               buffer-file-name)
-         (size               (1+ (buffer-size)))
-         (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
-         (compare-from       (- size reassurance-chars))
-         (compare-from-bytes (bufferpos-to-filepos compare-from)))
-    (with-temp-buffer
-      ;; As of Emacs 30 this fails when trying to read past the end of the file (in earlier Emacs versions it
-      ;; works, but doesn't insert anything).  Don't care to report anything to Emacs-devel (maybe it's even
-      ;; intentional in this case, don't know), just work with either behavior by suppressing all errors.
-      (ignore-errors (insert-file-contents file nil compare-from-bytes nil))
-      (let ((temporary      (current-buffer))
-            (temporary-size (buffer-size)))
-        (if (and (>= temporary-size reassurance-chars)
-                     (string= (buffer-substring-no-properties
-                               (point-min) (1+ reassurance-chars))
-                              (with-current-buffer buffer
-                                (logview--std-temporarily-widening
-                                  (buffer-substring-no-properties compare-from size)))))
-            (if (= temporary-size reassurance-chars)
-                (message "Backing file %s hasn't grown" file)
-              (with-current-buffer buffer
-                (let ((was-modified      (buffer-modified-p))
-                      (inhibit-read-only t)
-                      ;; This is to avoid unnecessary confirmation about
-                      ;; modifying a buffer with externally changed file.
-                      (buffer-file-name  nil))
-                  (logview--std-temporarily-widening
+  (logview--std-temporarily-widening   ;FIXME: `logview--temporarily-widening'?
+    (let* ((buffer             (current-buffer))
+           (file               buffer-file-name)
+           (reassurance-chars  (min (max logview-reassurance-chars 0)
+                                    (buffer-size)))
+           (compare-from       (- (point-max) reassurance-chars))
+           (current-text       (buffer-substring-no-properties
+                                compare-from (point-max)))
+           (compare-from-bytes (bufferpos-to-filepos compare-from)))
+      (with-temp-buffer
+        ;; As of Emacs 30 this fails when trying to read past the end of the
+        ;; file (in earlier Emacs versions it works, but doesn't insert
+        ;; anything).  Don't care to report anything to Emacs-devel (maybe it's
+        ;; even intentional in this case, don't know), just work with either
+        ;; behavior by suppressing all errors.
+        (ignore-errors (insert-file-contents file nil compare-from-bytes nil))
+        (let ((temporary      (current-buffer))
+              (temporary-boundary (+ reassurance-chars (point-min)))
+              (temporary-size (buffer-size)))
+          (if (and (>= temporary-size reassurance-chars)
+                   (string= (buffer-substring-no-properties
+                             (point-min) temporary-boundary)
+                            current-text))
+              (if (= temporary-size reassurance-chars)
+                  (message "Backing file %s hasn't grown" file)
+                (with-current-buffer buffer
+                  (let ((was-modified      (buffer-modified-p))
+                        (inhibit-read-only t)
+                        ;; This is to avoid unnecessary confirmation about
+                        ;; modifying a buffer with externally changed file.
+                        (buffer-file-name  nil))
                     (save-excursion
                       (goto-char (point-max))
-                      (insert-buffer-substring-no-properties temporary (1+ reassurance-chars) (1+ temporary-size))))
-                  (restore-buffer-modified-p was-modified))
-                (message "Appended the tail of file %s" file)))
-          (unless no-errors
-            (user-error "Buffer contents doesn't match the head of %s anymore" file)))))))
+                      ;; FIXME: Why `-no-properties'?
+                      (insert-buffer-substring-no-properties
+                       temporary temporary-boundary nil))
+                    (restore-buffer-modified-p was-modified))
+                  (message "Appended the tail of file %s" file)))
+            (unless no-errors
+              (user-error "Buffer contents doesn't match the head of %s anymore" file))))))))
 
 
 
@@ -3421,7 +3426,7 @@ CALLBACK."
     (when entry+start
       (let ((entry    (car entry+start))
             (entry-at (cdr entry+start))
-            (limit    (if only-visible (logview--point-max) (1+ (buffer-size)))))
+            (limit    (if only-visible (logview--point-max) (point-max))))
         (unless (and skip-current (>= (setq entry-at (logview--entry-end entry entry-at)) limit))
           (while (progn (setq entry (or (get-text-property entry-at 'logview-entry)
                                         (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
@@ -3791,7 +3796,7 @@ next line, which is usually one line beyond END."
           (when (or (looking-at logview--entry-regexp)
                     (re-search-backward logview--entry-regexp nil t)
                     (re-search-forward  logview--entry-regexp nil t))
-            (setq region-end (min region-end (1+ (buffer-size))))
+            (setq region-end (min region-end (point-max)))
             (let* ((match-data  (match-data t))
                    ;; The following depends on exact submode format, i.e. on how many
                    ;; groups there are in `logview--entry-regexp'.
@@ -4365,7 +4370,7 @@ only edits after it get discarded."
             (with-current-buffer parent
               (logview--update-mode-name)))
         (let ((filters      (buffer-substring-no-properties
-                             (point-min) (1+ (buffer-size))))
+                             (point-min) (point-max)))
               (hint-comment (logview-filter-edit--hint-comment)))
             (when (string-prefix-p hint-comment filters)
               (setf filters (substring filters (length hint-comment))))
