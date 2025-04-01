@@ -264,7 +264,6 @@ aliases  [optional]
 
     Submode can have any number of optional aliases, which work just
     as the name."
-  :group 'logview
   :type  logview--additional-submodes-type
   :set   #'logview--set-submode-affecting-variable
   :set-after '(logview-additional-timestamp-formats logview-additional-level-mappings))
@@ -318,7 +317,6 @@ map to the levels of the mode.  This is the case with RFC 5424:
 
 Mapping can have any number of optional aliases, which work just
 as the name."
-  :group 'logview
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
                               (cons :tag "" (const :tag "Error levels:"       error)       (repeat string))
@@ -357,7 +355,6 @@ also specified.
 
 Timestamp format can have any number of optional aliases, which
 work just as the name."
-  :group 'logview
   :type  '(repeat (cons (string :tag "Name")
                         (list :tag "Definition"
                               (set :inline t
@@ -376,7 +373,6 @@ not even looked at.  If several lines look like log entry starts,
 but still cannot be matched against known submodes, the rest is
 skipped, see variable `logview-max-promising-lines'.  However,
 setting this to a ridiculously large number can still be slow."
-  :group 'logview
   :type  'integer)
 
 (defcustom logview-max-promising-lines 3
@@ -389,7 +385,6 @@ avoiding very long unsuccessful guessing times even when
 
 Setting this to zero makes the mode match against all
 `logview-guess-lines'."
-  :group 'logview
   :type  'integer)
 
 (defcustom logview-auto-revert-mode nil
@@ -405,7 +400,6 @@ to it.
 
 To temporarily activate or deactivate Auto-Revert (Tail) mode in
 a Logview buffer type `\\<logview-mode-map>\\[auto-revert-mode]' or `\\<logview-mode-map>\\[auto-revert-tail-mode]'."
-  :group 'logview
   :type  '(choice (const :tag "Off"                   nil)
                   (const :tag "Auto-Revert mode"      auto-revert-mode)
                   (const :tag "Auto-Revert Tail mode" auto-revert-tail-mode)))
@@ -417,7 +411,6 @@ to compare part of the file on disk with part of the buffer to
 make sure (even if not with 100% guarantee) that the buffer
 really represents beginning of its backing file.  The command
 will refuse to complete operation unless this check succeeds."
-  :group 'logview
   :type  'integer)
 
 
@@ -425,7 +418,6 @@ will refuse to complete operation unless this check succeeds."
   "Default target gap length for `\\<logview-mode-map>\\[logview-next-timestamp-gap]' and similar commands.
 This must be a non-negative number of seconds.  Can be changed
 temporarily for a single buffer with `\\<logview-mode-map>\\[logview-change-target-gap-length]'."
-  :group 'logview
   :type  'number)
 
 (defcustom logview-copy-visible-text-only t
@@ -434,7 +426,6 @@ Standard Emacs behavior is to copy even invisible text, but that
 typically doesn't make much sense with filtering.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-copy-visible-text-only]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-search-only-in-messages nil
@@ -444,7 +435,6 @@ anywhere.  However, it is sometimes useful to ignore other parts
 of log entries, e.g. timestamp when searching for numbers.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-search-only-in-messages]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-preview-filter-changes t
@@ -453,19 +443,16 @@ This preview is activated whenever you change the filters in the
 buffer popped up by `\\<logview-mode-map>\\[logview-edit-filters]' or `\\<logview-mode-map>\\[logview-edit-thread-narrowing-filters]'.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-filter-preview]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-show-ellipses t
   "Whether to show ellipses to indicate hidden log entries.
 
 To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logview-toggle-show-ellipses]'."
-  :group 'logview
   :type  'boolean)
 
 (defcustom logview-highlighted-entry-part 'whole
   "Which parts of an entry get highlighted with `\\<logview-mode-map>\\[logview-highlight-view-entries]'."
-  :group 'logview
   :type  '(choice (const :tag "The whole entry"                  whole)
                   (const :tag "Entry header (date, level, etc.)" header)
                   (const :tag "Entry message"                    message))
@@ -475,7 +462,6 @@ To temporarily change this on per-buffer basis type `\\<logview-mode-map>\\[logv
 (defcustom logview-pulse-entries '(section-movement navigation-view timestamp-gap)
   "When to briefly highlight the current entry.
 You can also pulse the current entry unconditionally with `\\<logview-mode-map>\\[logview-pulse-current-entry]' command."
-  :group 'logview
   :type  '(set :inline t
                (const :tag "After section movement commands" section-movement)
                (const :tag "After navigating a view with `\\<logview-mode-map>\\[logview-next-navigation-view-entry]' or `\\<logview-mode-map>\\[logview-previous-navigation-view-entry]'" navigation-view)
@@ -485,7 +471,6 @@ You can also pulse the current entry unconditionally with `\\<logview-mode-map>\
 
 (defcustom logview-views-file (locate-user-emacs-file "logview.views")
   "Simple text file in which defined views are stored."
-  :group 'logview
   :type  'file)
 
 (defcustom logview-cache-filename (locate-user-emacs-file "logview-cache.extmap")
@@ -493,12 +478,10 @@ You can also pulse the current entry unconditionally with `\\<logview-mode-map>\
 Customizable in case you want to put it somewhere else.  This
 file can be safely deleted, but will be recreated by Logview next
 time you use the mode.  Used to make startup faster."
-  :group 'logview
   :type  'file)
 
 (defcustom logview-completing-read-function nil
   "Completion system used by Logview."
-  :group 'logview
   :type  '(radio
            (const :tag "Auto" nil)
            (function-item completing-read)
@@ -519,78 +502,65 @@ time you use the mode.  Used to make startup faster."
      :background "#600000")
     (t
      :background "#ffe0e0"))
-  "Face to use for error log entries."
-  :group 'logview-faces)
+  "Face to use for error log entries.")
 
 (defface logview-level-warning
   '((t :inherit warning))
-  "Face to use for warning level strings."
-  :group 'logview-faces)
+  "Face to use for warning level strings.")
 
 (defface logview-warning-entry
   '((((background dark))
      :background "#606000")
     (t
      :background "#ffffe0"))
-  "Face to use for warning log entries."
-  :group 'logview-faces)
+  "Face to use for warning log entries.")
 
 (defface logview-level-information
   '((t :inherit success))
-  "Face to use for information level strings."
-  :group 'logview-faces)
+  "Face to use for information level strings.")
 
 (defface logview-information-entry
   '((((background dark))
      :background "#004000")
     (t
      :background "#e8ffe8"))
-  "Face to use for information log entries."
-  :group 'logview-faces)
+  "Face to use for information log entries.")
 
 (defface logview-level-debug
   nil
-  "Face to use for debug level strings."
-  :group 'logview-faces)
+  "Face to use for debug level strings.")
 
 (defface logview-debug-entry
   nil
-  "Face to use for debug log entries."
-  :group 'logview-faces)
+  "Face to use for debug log entries.")
 
 (defface logview-level-trace
   '((t :inherit shadow))
-  "Face to use for trace level strings."
-  :group 'logview-faces)
+  "Face to use for trace level strings.")
 
 (defface logview-trace-entry
   '((((background dark))
      :background "#404040")
     (t
      :background "#f0f0f0"))
-  "Face to use for trace log entries."
-  :group 'logview-faces)
+  "Face to use for trace log entries.")
 
 (defface logview-timestamp
   '((t :inherit font-lock-builtin-face))
-  "Face to use for log entry timestamp."
-  :group 'logview-faces)
+  "Face to use for log entry timestamp.")
 
 (defface logview-name
   '((t :inherit font-lock-string-face))
-  "Face to use for logger name."
-  :group 'logview-faces)
+  "Face to use for logger name.")
 
 (defface logview-thread
   '((t :inherit font-lock-variable-name-face))
-  "Face to use for logger thread."
-  :group 'logview-faces)
+  "Face to use for logger thread.")
 
 (defface logview-section
   '((t :inverse-video t
        :weight        bold))
-  "Face to use for a section's header."
-  :group 'logview-faces)
+  "Face to use for a section's header.")
 
 (defface logview-highlight
   '((((background dark))
@@ -599,8 +569,7 @@ time you use the mode.  Used to make startup faster."
      :background "#f8d0ff"))
   "Face to highlight entries of a view chosen with `\\<logview-mode-map>\\[logview-highlight-view-entries]'.
 Variable `logview-highlighted-entry-part' controls how exactly
-this face is applied."
-  :group 'logview-faces)
+this face is applied.")
 
 (defface logview-pulse
   '((((background dark))
@@ -609,8 +578,7 @@ this face is applied."
      :background "#c0c0ff"))
   "Face to briefly highlight entries to draw attention.
 Variable `logview-pulse-entries' controls in which situations
-this face is used."
-  :group 'logview-faces)
+this face is used.")
 
 (defface logview-unsearchable
   '((t :inherit shadow))
@@ -636,8 +604,7 @@ settings) with this face.")
     (t
      :background "#ffe0c0"
      :weight     bold))
-  "Face to use for type prefixes in filter editing buffer."
-  :group 'logview-faces)
+  "Face to use for type prefixes in filter editing buffer.")
 
 
 
@@ -952,7 +919,7 @@ macro `logview--std-temporarily-widening' instead."
   ;; code can irreversibly freeze Emacs, but this is of course "not a bug":
   ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=57804.  They care about responsiveness
   ;; with long lines, but not here, right.
-  (unless (and (= (point-min) 1) (= (point-max) (1+ (buffer-size))))
+  (unless (= (- (point-max) (point-min)) (buffer-size))
     (error "Logview is incompatible with locked narrowing; see https://github.com/doublep/logview#locked-narrowing")))
 
 (defmacro logview--std-temporarily-widening (&rest body)
@@ -1048,9 +1015,9 @@ two functions (available since the first call) further."
   "Return end of previous line.
 This function assumes POSITION is at the beginning of a line.  If
 this is the first line, don't change POSITION."
-  (if (> position 1)
+  (if (> position (point-min))
       (1- position)
-    1))
+    (point-min)))
 
 (defsubst logview--character-back (position)
   "Return end of previous line assumin non-first line.
@@ -2845,7 +2812,7 @@ These are:
                   (insert "  " (logview--help-format-keys entry "[1-5]" keys-width)
                           "  " (logview--help-substitute-keys (car (last entry))) "\n")
                 (insert "\n  " (replace-regexp-in-string "\n" "\n  " (logview--help-substitute-keys entry)) "\n")))))))
-    (goto-char 1)
+    (goto-char (point-min))
     (help-mode)
     (let ((map (make-sparse-keymap)))
       (set-keymap-parent map help-mode-map)
@@ -2957,14 +2924,21 @@ restrictions most likely wouldn't make any sense with new text."
   (interactive)
   (let* ((narrowed             (buffer-narrowed-p))
          (reassurance-chars    (max logview-reassurance-chars 1))
-         (first-characters     (when narrowed (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars)))))
+         (first-characters     (when narrowed
+                                 (logview--temporarily-widening
+                                  (buffer-substring-no-properties
+                                   (point-min)
+                                   (min (point-max) reassurance-chars)))))
          (revert-without-query (when buffer-file-name (list (regexp-quote buffer-file-name))))
          (was-read-only        buffer-read-only))
     (revert-buffer nil nil t)
     ;; Apparently 'revert-buffer' resets this.
     (read-only-mode (if was-read-only 1 0))
     (if narrowed
-        (let ((same-contents (string= (logview--temporarily-widening (buffer-substring-no-properties 1 (min (point-max) reassurance-chars))) first-characters)))
+        (let ((same-contents (logview--temporarily-widening
+                              (string= (buffer-substring-no-properties
+                                        (point-min) (min (point-max) reassurance-chars))
+                                       first-characters))))
           (if same-contents
               (message "Reverted the buffer; kept the narrowing as the start contents is the same")
             (logview-widen)
@@ -2976,42 +2950,46 @@ restrictions most likely wouldn't make any sense with new text."
 If NO-ERRORS is non-nil and the file has changed in a non-growing
 way, returns nil rather than barking.  In case of success, always
 returns non-nil."
-  (let* ((buffer             (current-buffer))
-         (file               buffer-file-name)
-         (size               (1+ (buffer-size)))
-         (reassurance-chars  (min (max logview-reassurance-chars 0) (1- size)))
-         (compare-from       (- size reassurance-chars))
-         ;; 'position-bytes' appears to count from 1, yet we need
-         ;; zero-based offset.
-         (compare-from-bytes (1- (position-bytes compare-from))))
-    (with-temp-buffer
-      ;; As of Emacs 30 this fails when trying to read past the end of the file (in earlier Emacs versions it
-      ;; works, but doesn't insert anything).  Don't care to report anything to Emacs-devel (maybe it's even
-      ;; intentional in this case, don't know), just work with either behavior by suppressing all errors.
-      (ignore-errors (insert-file-contents file nil compare-from-bytes nil))
-      (let ((temporary      (current-buffer))
-            (temporary-size (buffer-size)))
-        (if (and (>= temporary-size reassurance-chars)
-                     (string= (buffer-substring-no-properties 1 (1+ reassurance-chars))
-                              (with-current-buffer buffer
-                                (logview--std-temporarily-widening
-                                  (buffer-substring-no-properties compare-from size)))))
-            (if (= temporary-size reassurance-chars)
-                (message "Backing file %s hasn't grown" file)
-              (with-current-buffer buffer
-                (let ((was-modified      (buffer-modified-p))
-                      (inhibit-read-only t)
-                      ;; This is to avoid unnecessary confirmation about
-                      ;; modifying a buffer with externally changed file.
-                      (buffer-file-name  nil))
-                  (logview--std-temporarily-widening
+  (logview--std-temporarily-widening   ;FIXME: `logview--temporarily-widening'?
+    (let* ((buffer             (current-buffer))
+           (file               buffer-file-name)
+           (reassurance-chars  (min (max logview-reassurance-chars 0)
+                                    (buffer-size)))
+           (compare-from       (- (point-max) reassurance-chars))
+           (current-text       (buffer-substring-no-properties
+                                compare-from (point-max)))
+           (compare-from-bytes (bufferpos-to-filepos compare-from)))
+      (with-temp-buffer
+        ;; As of Emacs 30 this fails when trying to read past the end of the
+        ;; file (in earlier Emacs versions it works, but doesn't insert
+        ;; anything).  Don't care to report anything to Emacs-devel (maybe it's
+        ;; even intentional in this case, don't know), just work with either
+        ;; behavior by suppressing all errors.
+        (ignore-errors (insert-file-contents file nil compare-from-bytes nil))
+        (let ((temporary      (current-buffer))
+              (temporary-boundary (+ reassurance-chars (point-min)))
+              (temporary-size (buffer-size)))
+          (if (and (>= temporary-size reassurance-chars)
+                   (string= (buffer-substring-no-properties
+                             (point-min) temporary-boundary)
+                            current-text))
+              (if (= temporary-size reassurance-chars)
+                  (message "Backing file %s hasn't grown" file)
+                (with-current-buffer buffer
+                  (let ((was-modified      (buffer-modified-p))
+                        (inhibit-read-only t)
+                        ;; This is to avoid unnecessary confirmation about
+                        ;; modifying a buffer with externally changed file.
+                        (buffer-file-name  nil))
                     (save-excursion
                       (goto-char (point-max))
-                      (insert-buffer-substring-no-properties temporary (1+ reassurance-chars) (1+ temporary-size))))
-                  (restore-buffer-modified-p was-modified))
-                (message "Appended the tail of file %s" file)))
-          (unless no-errors
-            (user-error "Buffer contents doesn't match the head of %s anymore" file)))))))
+                      ;; FIXME: Why `-no-properties'?
+                      (insert-buffer-substring-no-properties
+                       temporary temporary-boundary nil))
+                    (restore-buffer-modified-p was-modified))
+                  (message "Appended the tail of file %s" file)))
+            (unless no-errors
+              (user-error "Buffer contents doesn't match the head of %s anymore" file))))))))
 
 
 
@@ -3039,7 +3017,7 @@ returns non-nil."
           (push (cdr format) standard-timestamps))
         (setq standard-timestamps (nreverse standard-timestamps))
         (catch 'success
-          (goto-char 1)
+          (goto-char (point-min))
           (while (and (< line-number (max logview-guess-lines 1)) (> remaining-attemps 0) (not (eobp)))
             (let ((line (buffer-substring-no-properties (point) (progn (end-of-line) (point)))))
               (let (promising)
@@ -3415,10 +3393,12 @@ something similar first."
                        (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
                               (get-text-property entry-at 'logview-entry)))))
     (if entry
-        (when (and (> entry-at 1) (eq (get-text-property (1- entry-at) 'logview-entry) entry))
-          (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) 1)))
+        (when (and (> entry-at (point-min))
+                   (eq (get-text-property (1- entry-at) 'logview-entry) entry))
+          (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) (point-min))))
       (when (setq entry-at (or (next-single-property-change entry-at 'logview-entry)
-                               (when (and (> entry-at 1) (get-text-property (1- entry-at) 'logview-entry))
+                               (when (and (> entry-at (point-min))
+                                          (get-text-property (1- entry-at) 'logview-entry))
                                  (previous-single-property-change entry-at 'logview-entry))))
         (setq entry (get-text-property entry-at 'logview-entry))))
     (if entry
@@ -3446,7 +3426,7 @@ CALLBACK."
     (when entry+start
       (let ((entry    (car entry+start))
             (entry-at (cdr entry+start))
-            (limit    (if only-visible (logview--point-max) (1+ (buffer-size)))))
+            (limit    (if only-visible (logview--point-max) (point-max))))
         (unless (and skip-current (>= (setq entry-at (logview--entry-end entry entry-at)) limit))
           (while (progn (setq entry (or (get-text-property entry-at 'logview-entry)
                                         (progn (logview--find-region-entries entry-at (+ entry-at logview--lazy-region-size))
@@ -3463,13 +3443,15 @@ See `logview--iterate-entries-forward' for details."
     (when entry+start
       (let ((entry    (car entry+start))
             (entry-at (cdr entry+start))
-            (limit    (if only-visible (logview--point-min) 1)))
+            (limit    (if only-visible (logview--point-min) (point-min))))
         (unless (and skip-current (< (setq entry-at (1- entry-at)) limit))
           (while (and (setq entry (or (get-text-property entry-at 'logview-entry)
-                                      (progn (logview--find-region-entries (max 1 (- entry-at logview--lazy-region-size)) (1+ entry-at) t)
+                                      (progn (logview--find-region-entries (max (point-min) (- entry-at logview--lazy-region-size)) (1+ entry-at) t)
                                              (get-text-property entry-at 'logview-entry))))
-                      (progn (unless (or (= entry-at 1) (not (eq (get-text-property (1- entry-at) 'logview-entry) entry)))
-                               (setq entry-at (or (previous-single-property-change entry-at 'logview-entry) 1)))
+                      (progn (unless (or (= entry-at (point-min))
+                                         (not (eq (get-text-property (1- entry-at) 'logview-entry) entry)))
+                               (setq entry-at (or (previous-single-property-change entry-at 'logview-entry)
+                                                  (point-min))))
                              (when (or (and only-visible (invisible-p entry-at))
                                        (and validator (not (funcall validator entry entry-at)))
                                        (funcall callback entry entry-at))
@@ -3513,7 +3495,7 @@ See `logview--iterate-entries-forward' for details."
       message
     (with-temp-buffer
       (insert message)
-      (goto-char 1)
+      (goto-char (point-min))
       (let ((cut-after (point)))
         (while (and (search-forward-regexp (rx word eow) nil t)
                     (when (<= (1- (point)) (- max-length 3))
@@ -3542,9 +3524,9 @@ See `logview--iterate-entries-forward' for details."
                           `("[" (:propertize ,(plist-get view :name) help-echo "Current view\nType `v' to change") "]"
                             ,@(when (plist-get view :index)
                                 `(":" (:propertize (number-to-string (plist-get view :index)) help-echo "View index\nType `M-1'...`M-0' to switch between views with index")))))
-                      ,@(when logview--narrow-to-section-headers
-                          `("!"
-                            (:propertize "OSH" face warning help-echo "Showing only section headers for easier long-distance navigation\nType `c h' to return to normal mode")))))
+                      (logview--narrow-to-section-headers
+                       `("!"
+                         (:propertize "OSH" face warning help-echo "Showing only section headers for easier long-distance navigation\nType `c h' to return to normal mode")))))
     ;; Sometimes it doesn't work automatically (e.g. when using `C-c C-a' in a
     ;; view-editing buffer and thus indirectly changing a different buffer's modeline).
     ;; Just force update at all times, not trying to figure out when it works by itself.
@@ -3738,7 +3720,7 @@ or nil if there are no filters."
     (insert filters)
     (unless (bolp)
       (insert "\n"))
-    (goto-char 1)
+    (goto-char (point-min))
     (logview--iterate-filter-buffer-lines callback)))
 
 (defun logview--iterate-filter-buffer-lines (callback)
@@ -3814,7 +3796,7 @@ next line, which is usually one line beyond END."
           (when (or (looking-at logview--entry-regexp)
                     (re-search-backward logview--entry-regexp nil t)
                     (re-search-forward  logview--entry-regexp nil t))
-            (setq region-end (min region-end (1+ (buffer-size))))
+            (setq region-end (min region-end (point-max)))
             (let* ((match-data  (match-data t))
                    ;; The following depends on exact submode format, i.e. on how many
                    ;; groups there are in `logview--entry-regexp'.
@@ -4328,12 +4310,12 @@ This list is preserved across Emacs session in
       (define-key map (kbd (car binding)) (cadr binding)))
     map))
 
+(defvar logview-filter-edit-font-lock-keywords
+  '(logview-filter-edit--font-lock-region))
+
 (define-derived-mode logview-filter-edit-mode nil "Logview Filters"
   "Major mode for editing filters of a Logview buffer."
-  (logview-filter-edit--font-lock-region (point-min) (point-max))
-  ;; FIXME: Use `font-lock-defaults' as in the main buffer.  Not very important, as filter
-  ;;        buffers are usually not large.
-  (add-hook 'after-change-functions #'logview-filter-edit--font-lock-region t t)
+  (setq-local font-lock-defaults '(logview-filter-edit-font-lock-keywords t))
   (add-hook 'after-change-functions #'logview-filter-edit--schedule-preview t t))
 
 (defun logview-filter-edit-save ()
@@ -4373,20 +4355,22 @@ only edits after it get discarded."
     (when process-filters
       (if (eq mode 'views)
           (let ((new-views (save-excursion
-                             (goto-char 1)
+                             (goto-char (point-min))
                              (logview--parse-view-definitions t))))
-            (if logview-filter-edit--editing-views-for-submode
-                (let ((combined-views (nreverse new-views)))
-                  (dolist (view (logview--views))
-                    (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
-                      (push view combined-views)))
-                  (setf logview--views (nreverse combined-views)))
-              (setf logview--views new-views))
+            (setf logview--views
+                  (if logview-filter-edit--editing-views-for-submode
+                      (let ((combined-views (nreverse new-views)))
+                        (dolist (view (logview--views))
+                          (unless (equal (plist-get view :submode) logview-filter-edit--editing-views-for-submode)
+                            (push view combined-views)))
+                        (nreverse combined-views))
+                    new-views))
             (setf logview--views-need-saving t)
             (logview--after-updating-view-definitions)
             (with-current-buffer parent
               (logview--update-mode-name)))
-        (let ((filters      (buffer-substring-no-properties 1 (1+ (buffer-size))))
+        (let ((filters      (buffer-substring-no-properties
+                             (point-min) (point-max)))
               (hint-comment (logview-filter-edit--hint-comment)))
             (when (string-prefix-p hint-comment filters)
               (setf filters (substring filters (length hint-comment))))
@@ -4414,20 +4398,19 @@ only edits after it get discarded."
     (unless (bolp)
       (insert "\n")))
   ;; Put cursor at the first filter beginning if possible.
-  (goto-char 1)
+  (goto-char (point-min))
   (logview--iterate-filter-buffer-lines (lambda (type _line-begin begin _end)
                                           (if (member type logview--valid-filter-prefixes)
                                               (progn (goto-char begin) nil)
                                             t)))
   (set-buffer-modified-p nil))
 
-(defun logview-filter-edit--font-lock-region (region-begin region-end &optional _old-length)
+(defun logview-filter-edit--font-lock-region (region-end)
   (save-excursion
     (save-match-data
       ;; Not even in a Logview mode buffer, not using `std'.
       (logview--temporarily-widening
         (with-silent-modifications
-          (goto-char region-begin)
           (forward-line 0)
           ;; Never try to parse from the middle of a multiline filter.
           (while (and (not (bobp))
@@ -4488,7 +4471,9 @@ only edits after it get discarded."
                                        t))))
                           t)))
                (put-text-property begin end 'face 'error))
-             (< (point) region-end))))))))
+             (< (point) region-end)))))))
+  ;; Tell font-lock that it's not worth calling us back for "further matches".
+  nil)
 
 (defun logview-filter-edit--schedule-preview (&rest _ignored)
   (unless (or logview-filter-edit--preview-timer (eq logview-filter-edit--mode 'views))
