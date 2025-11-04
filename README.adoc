@@ -31,9 +31,10 @@ The mode is meant to be operated in read-only buffer, so most of the
 command bindings lack modifiers.
 
 Out-of-the-box the mode should be able to parse standard SLF4J (Log4j,
-Logback) files, Apache error logs, PHP Monolog logs, and certain UNIX
-files in `/var/log`.  Nearly all typical timestamp formats, including
-localized ones, should be picked up automatically.
+Logback) files, Apache error logs, PHP Monolog logs, certain UNIX
+files in `/var/log` and output of Jupyter Lab.  Nearly all typical
+timestamp formats, including localized ones, should be picked up
+automatically.
 
 toc::[]
 
