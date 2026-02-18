@@ -77,8 +77,6 @@
   '(("SLF4J"            . ((format  . "TIMESTAMP [THREAD] LEVEL NAME -")
                            (levels  . "SLF4J")
                            (aliases . ("Log4j" "Log4j2" "Logback"))))
-    ;; We misuse thread as a field for hostname.
-    ("UNIX"             . ((format  . "TIMESTAMP THREAD NAME:")))
     ("Apache Error Log" . ((format  . "[TIMESTAMP] [NAME:LEVEL] [THREAD] MESSAGE")
                            (levels  . "RFC 5424 lowercase")))
     ("Monolog"          . ((format  . "[TIMESTAMP] NAME[THREAD].LEVEL: MESSAGE")
@@ -88,7 +86,11 @@
     ;; https://jupyter-server.readthedocs.io/en/latest/other/full-config.html, but it does match what '$
     ;; jupyter lab' produces.  Therefore called "JupyterLab", not just "Jupyter".
     ("JupyterLab"       . ((format  . "[LEVEL TIMESTAMP NAME] MESSAGE")
-                           (levels  . "JupyterLab"))))
+                           (levels  . "JupyterLab")))
+    ("Android"          . ((format  . "TIMESTAMP THREAD IGNORED LEVEL NAME: MESSAGE")
+                           (levels  . "Android")))
+    ;; We misuse thread as a field for hostname.  Placed last to avoid clobbering more specific formats.
+    ("UNIX"             . ((format  . "TIMESTAMP THREAD NAME:"))))
   "Alist of standard submodes.
 This value is used as the fallback for customizable
 `logview-additional-submodes'.")
@@ -119,7 +121,12 @@ This value is used as the fallback for customizable
     ("JupyterLab"         . ((error       "C" "E")
                              (warning     "W")
                              (information "I")
-                             (debug       "D"))))
+                             (debug       "D")))
+    ("Android"            . ((error "E")
+                             (warning "W")
+                             (information "I")
+                             (debug "D")
+                             (trace "V"))))
   "Standard mappings of actual log levels to mode's final levels.
 This alist value is used as the fallback for customizable
 `logview-additional-level-mappings'.")
@@ -138,7 +145,8 @@ This alist value is used as the fallback for customizable
                     (nil                                      "EEE MMM dd HH:mm:ss.SSSSSS yyyy")
                     (nil                                      "MMM d HH:mm:ss")
                     (nil                                      "MMM d h:mm:ss a")
-                    (nil                                      "h:mm:ss a")))
+                    (nil                                      "h:mm:ss a")
+                    (nil                                      "MM-dd HH:mm:ss.SSS")))
       (push (list (or (car data) (cadr data)) (cons 'java-pattern (cadr data))) formats)
       (when (string-match-p "\\." (cadr data))
         (nconc (car formats) '((datetime-options :any-decimal-separator t))))
